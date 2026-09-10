@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.yarn/
+
+# Builds
+.next/
+dist/
+build/
+out/
+coverage/
+.turbo/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test/runtime data
+.tmp/
+tmp/
+.cache/
+
+# Local databases / exports
+*.sqlite
+*.sqlite3
+*.db
+local-data/
+exports/
+
+# Generated files
+*.generated.*
