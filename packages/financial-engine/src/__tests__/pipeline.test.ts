@@ -16,7 +16,7 @@ describe("transaction pipeline", () => {
 
     expect(result.description).toBe("Paid KPLC electricity bill");
     expect(result.amountMinor).toBe(350000n);
-    expect(result.type).toBe("fee");
+    expect(result.type).toBe("expense");
     expect(result.categoryId).toBe("utilities");
     expect(result.categorySource).toBe("rule");
     expect(result.provenance.externalId).toBe("mpesa-001");
