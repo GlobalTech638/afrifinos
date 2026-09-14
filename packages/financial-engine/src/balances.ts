@@ -1,4 +1,4 @@
-import type { Account, Asset, LedgerEntry, Liability, Money } from "@afrifinos/financial-domain";
+import type { Account, LedgerEntry, Money } from "@afrifinos/financial-domain";
 import { signedAmount } from "@afrifinos/financial-domain";
 
 export interface AccountBalance {
@@ -11,8 +11,9 @@ export function calculateAccountBalance(
   accountId: string,
   entries: readonly LedgerEntry[],
   currency?: Money["currency"],
+  openingBalanceMinor: bigint | number | string = 0n,
 ): AccountBalance {
-  let balanceMinor = 0n;
+  let balanceMinor = BigInt(openingBalanceMinor);
   let detectedCurrency: Money["currency"] | undefined = currency;
 
   for (const entry of entries) {
@@ -24,15 +25,21 @@ export function calculateAccountBalance(
     balanceMinor += signedAmount(entry);
   }
 
-  if (!detectedCurrency) throw new Error(`No ledger entries found for account ${accountId}`);
+  if (!detectedCurrency) throw new Error(`No currency available for account ${accountId}`);
   return { accountId, currency: detectedCurrency, balanceMinor };
 }
 
 export function calculateAccountBalances(
   accounts: readonly Account[],
   entries: readonly LedgerEntry[],
+  openingBalances: ReadonlyMap<string, bigint | number | string> = new Map(),
 ): readonly AccountBalance[] {
-  return accounts.map((account) => calculateAccountBalance(account.accountId, entries, account.currency));
+  return accounts.map((account) => calculateAccountBalance(
+    account.accountId,
+    entries,
+    account.currency,
+    openingBalances.get(account.accountId) ?? 0n,
+  ));
 }
 
 export interface NetWorth {
