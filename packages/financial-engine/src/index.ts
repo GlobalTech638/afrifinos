@@ -5,3 +5,4 @@ export * from "./categorization.js";
 export * from "./pipeline.js";
 export * from "./ledger-posting.js";
 export * from "./balances.js";
+export * from "./reconciliation.js";
