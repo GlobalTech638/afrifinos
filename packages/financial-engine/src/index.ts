@@ -6,3 +6,4 @@ export * from "./pipeline.js";
 export * from "./ledger-posting.js";
 export * from "./balances.js";
 export * from "./reconciliation.js";
+export * from "./financial-summary.js";
