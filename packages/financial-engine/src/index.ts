@@ -9,3 +9,4 @@ export * from "./reconciliation.js";
 export * from "./financial-summary.js";
 export * from "./temporal-intelligence.js";
 export * from "./forecasting.js";
+export * from "./intelligence-contracts.js";
