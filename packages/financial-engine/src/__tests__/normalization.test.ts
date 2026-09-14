@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { categorize, inferTransactionType, normalizeTransaction } from "../normalization.js";
+import { categorize } from "../categorization.js";
+import { inferTransactionType, normalizeTransaction } from "../normalization.js";
 
 describe("transaction normalization", () => {
   it("normalizes whitespace and exact amounts", () => {
