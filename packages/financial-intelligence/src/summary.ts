@@ -2,20 +2,20 @@ import type {
   Account,
   Asset,
   CurrencyCode,
-  LedgerEntry,
   Liability,
+  LedgerEntry,
 } from "@afrifinos/financial-domain";
-import { signedAmount } from "@afrifinos/financial-domain";
 import {
   calculateNetWorth,
   calculateAccountBalances,
-  calculateCashFlow,
-  calculateDebtBurden,
-  calculateSavingsRate,
+  calculateDebtMetrics,
+  calculateSavingsMetrics,
   type AccountBalance,
-  type CashFlowMetrics,
-  type DebtBurdenMetrics,
+  type CashFlowSummary,
+  type DebtMetrics,
+  type SavingsMetrics,
 } from "@afrifinos/financial-engine";
+import type { NormalizedTransaction } from "@afrifinos/financial-engine";
 
 export const FINANCIAL_SUMMARY_VERSION = "2026-09-v1";
 
@@ -23,9 +23,11 @@ export interface FinancialSummaryInput {
   readonly currency: CurrencyCode;
   readonly accounts: readonly Account[];
   readonly ledgerEntries: readonly LedgerEntry[];
+  readonly transactions: readonly NormalizedTransaction[];
   readonly assets?: readonly Asset[];
   readonly liabilities?: readonly Liability[];
   readonly openingBalancesMinor?: Readonly<Record<string, bigint>>;
+  readonly debtServiceMinor?: bigint;
 }
 
 export interface FinancialSummary {
@@ -33,9 +35,9 @@ export interface FinancialSummary {
   readonly currency: CurrencyCode;
   readonly accountBalances: readonly AccountBalance[];
   readonly cashBalanceMinor: bigint;
-  readonly cashFlow: CashFlowMetrics;
-  readonly savingsRate: number;
-  readonly debtBurden: DebtBurdenMetrics;
+  readonly cashFlow: CashFlowSummary;
+  readonly savings: SavingsMetrics;
+  readonly debt: DebtMetrics;
   readonly netWorthMinor: bigint;
   readonly assetsMinor: bigint;
   readonly liabilitiesMinor: bigint;
@@ -47,19 +49,31 @@ function assertCurrency(value: CurrencyCode, expected: CurrencyCode, label: stri
   }
 }
 
-function sumMinor(values: readonly { amountMinor: bigint; currency: CurrencyCode }[], currency: CurrencyCode): bigint {
-  return values.reduce((total, value) => {
-    assertCurrency(value.currency, currency, "financial summary");
-    return total + value.amountMinor;
-  }, 0n);
+function calculateCashFlow(transactions: readonly NormalizedTransaction[], currency: CurrencyCode): CashFlowSummary {
+  let incomeMinor = 0n;
+  let expenseMinor = 0n;
+
+  for (const transaction of transactions) {
+    assertCurrency(transaction.currency, currency, "transaction");
+    const amount = transaction.amountMinor;
+
+    if (transaction.type === "income" || transaction.type === "refund") {
+      incomeMinor += amount < 0n ? -amount : amount;
+    } else if (transaction.type === "expense" || transaction.type === "fee") {
+      expenseMinor += amount < 0n ? -amount : amount;
+    }
+  }
+
+  return {
+    incomeMinor,
+    expenseMinor,
+    netCashFlowMinor: incomeMinor - expenseMinor,
+  };
 }
 
 export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSummary {
   const openingBalances = input.openingBalancesMinor ?? {};
-  const accountBalances = calculateAccountBalances(
-    input.accounts,
-    input.ledgerEntries,
-  ).map((balance) => ({
+  const accountBalances = calculateAccountBalances(input.accounts, input.ledgerEntries).map((balance) => ({
     ...balance,
     balanceMinor: balance.balanceMinor + (openingBalances[balance.accountId] ?? 0n),
   }));
@@ -72,11 +86,14 @@ export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSu
 
   const cashBalanceMinor = accountBalances
     .filter((balance) => cashAccountIds.has(balance.accountId))
-    .reduce((total, balance) => total + balance.balanceMinor, 0n);
+    .reduce((total, balance) => {
+      assertCurrency(balance.currency, input.currency, "cash account");
+      return total + balance.balanceMinor;
+    }, 0n);
 
-  const cashFlow = calculateCashFlow(input.ledgerEntries, input.currency);
-  const savingsRate = calculateSavingsRate(cashFlow);
-  const debtBurden = calculateDebtBurden(cashFlow);
+  const cashFlow = calculateCashFlow(input.transactions, input.currency);
+  const savings = calculateSavingsMetrics(cashFlow.incomeMinor, cashFlow.expenseMinor);
+  const debt = calculateDebtMetrics(cashFlow.incomeMinor, input.debtServiceMinor ?? 0n);
 
   const assets = input.assets ?? [];
   const liabilities = input.liabilities ?? [];
@@ -92,8 +109,8 @@ export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSu
     accountBalances,
     cashBalanceMinor,
     cashFlow,
-    savingsRate,
-    debtBurden,
+    savings,
+    debt,
     netWorthMinor: netWorth.netWorthMinor,
     assetsMinor: netWorth.assetsMinor,
     liabilitiesMinor: netWorth.liabilitiesMinor,
