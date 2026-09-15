@@ -9,9 +9,18 @@ export class FinancialController {
 
   @Get("summary")
   async summary(@OwnerId() ownerId: string, @Query("currency") currency = "KES") {
+    return this.financial.getSummary(ownerId, this.parseCurrency(currency));
+  }
+
+  @Get("intelligence")
+  async intelligence(@OwnerId() ownerId: string, @Query("currency") currency = "KES") {
+    return this.financial.getIntelligence(ownerId, this.parseCurrency(currency));
+  }
+
+  private parseCurrency(currency: string): CurrencyCode {
     if (!/^[A-Z]{3}$/i.test(currency)) {
       throw new BadRequestException("currency must be a 3-letter ISO-style code");
     }
-    return this.financial.getSummary(ownerId, currency.toUpperCase() as CurrencyCode);
+    return currency.toUpperCase() as CurrencyCode;
   }
 }
