@@ -13,3 +13,4 @@ export * from "./intelligence-contracts.js";
 export * from "./ai-analyst.js";
 export * from "./ai-prompt.js";
 export * from "./ai-validation.js";
+export * from "./ai-provider.js";
