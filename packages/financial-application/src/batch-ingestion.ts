@@ -3,6 +3,12 @@ import { deduplicateTransactions } from "@afrifinos/financial-ingestion";
 import type { TransactionWriteRepository } from "@afrifinos/financial-persistence";
 import { ingestTransaction, type IngestTransactionResult } from "./transaction-ingestion.js";
 
+export interface BatchIngestionFailure {
+  readonly input: RawTransaction;
+  readonly index: number;
+  readonly message: string;
+}
+
 export interface BatchIngestTransactionCommand {
   readonly ownerId: string;
   readonly primaryAccountId: string;
@@ -18,6 +24,7 @@ export interface BatchIngestTransactionCommand {
 export interface BatchIngestTransactionResult {
   readonly persisted: readonly IngestTransactionResult[];
   readonly duplicates: readonly RawTransaction[];
+  readonly failures: readonly BatchIngestionFailure[];
 }
 
 export async function ingestTransactionBatch(
@@ -26,26 +33,36 @@ export async function ingestTransactionBatch(
 ): Promise<BatchIngestTransactionResult> {
   const deduplicated = deduplicateTransactions(command.inputs, command.providerId);
   const persisted: IngestTransactionResult[] = [];
+  const failures: BatchIngestionFailure[] = [];
 
   for (let index = 0; index < deduplicated.unique.length; index += 1) {
     const input = deduplicated.unique[index];
     if (!input) continue;
 
-    persisted.push(await ingestTransaction(repository, {
-      ownerId: command.ownerId,
-      primaryAccountId: command.primaryAccountId,
-      counterAccountId: command.counterAccountId,
-      transactionId: command.transactionIdFor(input, index),
-      sourceKind: command.sourceKind,
-      providerId: command.providerId,
-      importedAt: command.importedAt,
-      sourceHash: command.sourceHash,
-      input,
-    }));
+    try {
+      persisted.push(await ingestTransaction(repository, {
+        ownerId: command.ownerId,
+        primaryAccountId: command.primaryAccountId,
+        counterAccountId: command.counterAccountId,
+        transactionId: command.transactionIdFor(input, index),
+        sourceKind: command.sourceKind,
+        providerId: command.providerId,
+        importedAt: command.importedAt,
+        sourceHash: command.sourceHash,
+        input,
+      }));
+    } catch (error) {
+      failures.push({
+        input,
+        index,
+        message: error instanceof Error ? error.message : "Transaction ingestion failed",
+      });
+    }
   }
 
   return {
     persisted,
     duplicates: deduplicated.duplicates,
+    failures,
   };
 }
