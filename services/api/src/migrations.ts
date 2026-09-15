@@ -1,5 +1,4 @@
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { runMigrations, type Migration, type SqlClient } from "@afrifinos/financial-persistence";
 
@@ -10,7 +9,7 @@ const migrationFiles = [
 ] as const;
 
 export async function loadApiMigrations(): Promise<readonly Migration[]> {
-  const directory = fileURLToPath(new URL("../../packages/financial-persistence/migrations/", import.meta.url));
+  const directory = join(process.cwd(), "packages", "financial-persistence", "migrations");
   return Promise.all(
     migrationFiles.map(async (id) => ({
       id,
