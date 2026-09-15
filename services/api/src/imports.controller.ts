@@ -1,15 +1,16 @@
-import { BadRequestException, Body, Controller, Headers, Inject, Post } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Inject, Post } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { parseTransactionCsv } from "@afrifinos/financial-ingestion";
 import { ingestTransaction } from "@afrifinos/financial-application";
 import type { FinancialRepository, TransactionWriteRepository } from "@afrifinos/financial-persistence";
 import { FINANCIAL_REPOSITORY } from "./app.module.js";
+import { OwnerId } from "./auth-context.js";
 
 interface CsvImportBody {
-  csv: string;
-  primaryAccountId: string;
-  counterAccountId: string;
-  providerId?: string;
+  readonly csv: string;
+  readonly primaryAccountId: string;
+  readonly counterAccountId: string;
+  readonly providerId?: string;
 }
 
 @Controller("imports")
@@ -19,13 +20,7 @@ export class ImportsController {
   ) {}
 
   @Post("csv")
-  async importCsv(
-    @Headers("x-owner-id") ownerId: string | undefined,
-    @Body() body: CsvImportBody,
-  ) {
-    if (!ownerId?.trim()) {
-      throw new BadRequestException("x-owner-id header is required until authentication is implemented");
-    }
+  async importCsv(@OwnerId() ownerId: string, @Body() body: CsvImportBody) {
     if (!body.csv?.trim()) throw new BadRequestException("csv is required");
     if (!body.primaryAccountId?.trim() || !body.counterAccountId?.trim()) {
       throw new BadRequestException("primaryAccountId and counterAccountId are required");
@@ -38,7 +33,7 @@ export class ImportsController {
     for (const [index, row] of parsed.rows.entries()) {
       try {
         const result = await ingestTransaction(this.repository, {
-          ownerId: ownerId.trim(),
+          ownerId,
           primaryAccountId: body.primaryAccountId,
           counterAccountId: body.counterAccountId,
           input: row,
