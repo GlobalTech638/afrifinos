@@ -38,7 +38,6 @@ export function calculateSpendingVolatility(
 
   // Compute the coefficient from ratios rather than converting raw minor-unit
   // balances to Number. This keeps the metric stable for very large ledgers.
-  const count = BigInt(values.length);
   const meanRatio = 1 / values.length;
   const normalizedValues = values.map((value) => ratioOfBigInts(value, total) / meanRatio);
   const variance = normalizedValues.reduce((sum, normalized) => sum + (normalized - 1) ** 2, 0) / values.length;
