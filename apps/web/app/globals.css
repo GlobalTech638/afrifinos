@@ -13,6 +13,7 @@ button, input, select { font: inherit; }
 .brand { font-weight: 800; letter-spacing: -0.04em; font-size: 22px; }
 .brand span { color: var(--accent); }
 .topbar small { color: var(--muted); }
+.text-button { margin-left: 14px; border: 0; background: transparent; color: var(--accent); font-weight: 700; cursor: pointer; }
 .content { max-width: 1240px; margin: 0 auto; padding: 34px 24px 64px; }
 .hero { display: flex; justify-content: space-between; gap: 24px; align-items: end; margin-bottom: 26px; }
 .hero h1 { margin: 0 0 8px; font-size: clamp(30px, 5vw, 46px); letter-spacing: -0.05em; }
@@ -46,14 +47,25 @@ button, input, select { font: inherit; }
 .form label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 700; }
 .form input, .form select { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 11px 12px; background: var(--surface); color: var(--text); outline: none; }
 .form input:focus, .form select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.form input[type="file"] { padding: 9px; }
 .form button { border: 0; border-radius: 10px; padding: 12px 16px; background: var(--accent); color: white; font-weight: 800; cursor: pointer; }
 .form button:disabled { opacity: .55; cursor: wait; }
 .onboarding { max-width: 900px; }
 .setup-card { max-width: 620px; }
 .setup-list { margin-top: 20px; }
 .form-error { background: #fff0ef; color: var(--danger); border: 1px solid #f3c5c1; padding: 10px 12px; border-radius: 10px; margin-bottom: 14px; }
+.page-error { margin-bottom: 16px; }
+.import-result { margin-top: 16px; padding: 14px; background: var(--surface-muted); border-radius: 12px; }
+.import-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.import-stats span { padding: 5px 9px; border-radius: 999px; background: var(--surface); font-size: 12px; font-weight: 700; }
+.import-errors { margin-top: 10px; color: var(--danger); font-size: 12px; line-height: 1.5; }
+.optional { font-weight: 400; }
+.auth-actions { text-align: center; }
+.auth-actions button { border: 0; background: var(--accent); color: white; border-radius: 10px; padding: 10px 16px; font-weight: 700; }
+.auth-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.auth-buttons button:last-child { background: var(--surface); color: var(--accent); border: 1px solid var(--accent); }
 .state { max-width: 720px; margin: 80px auto; }
 .state h1 { margin-top: 0; letter-spacing: -0.04em; }
 .state p { color: var(--muted); line-height: 1.6; }
 @media (max-width: 900px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .two { grid-template-columns: 1fr; } .hero { align-items: start; flex-direction: column; } }
-@media (max-width: 560px) { .topbar { padding: 16px 18px; } .content { padding: 26px 16px 48px; } .metrics { grid-template-columns: 1fr; } .forecast { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .topbar { padding: 16px 18px; } .content { padding: 26px 16px 48px; } .metrics { grid-template-columns: 1fr; } .forecast { grid-template-columns: 1fr; } .auth-buttons { grid-template-columns: 1fr; } }
