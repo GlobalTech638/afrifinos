@@ -159,6 +159,23 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
     }
   }
 
+  async getTransactionByProviderExternalId(
+    ownerId: string,
+    providerId: string,
+    externalId: string,
+  ): Promise<Transaction | null> {
+    const result = await this.client.query<TransactionRow>(
+      `SELECT id, owner_id, type, status, occurred_at, description, counterparty, category_id,
+              amount_minor, currency, source_kind, provider_id, external_id, imported_at, source_hash
+       FROM transactions
+       WHERE owner_id = $1 AND provider_id = $2 AND external_id = $3
+       LIMIT 1`,
+      [ownerId, providerId, externalId],
+    );
+    const row = result.rows[0];
+    return row ? transactionFromRow(row) : null;
+  }
+
   async saveTransaction(transaction: Transaction): Promise<void> {
     await this.client.query(
       `INSERT INTO transactions
