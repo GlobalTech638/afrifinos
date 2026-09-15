@@ -25,6 +25,29 @@ function requiredEnvironment(name: string): string {
   return value;
 }
 
+function accessTokenFromRequest(request: Request): string | null {
+  const authorization = request.headers.authorization;
+  if (authorization?.startsWith("Bearer ")) {
+    const token = authorization.slice("Bearer ".length).trim();
+    if (token) return token;
+  }
+
+  const cookieName = process.env.AUTH_COOKIE_NAME?.trim() || "afrifinos_access_token";
+  const cookieHeader = request.headers.cookie;
+  if (!cookieHeader) return null;
+
+  for (const part of cookieHeader.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 0) continue;
+    const name = part.slice(0, separator).trim();
+    if (name !== cookieName) continue;
+    const value = part.slice(separator + 1).trim();
+    return value ? decodeURIComponent(value) : null;
+  }
+
+  return null;
+}
+
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   private readonly issuer = requiredEnvironment("JWT_ISSUER");
@@ -41,14 +64,11 @@ export class JwtAuthGuard implements CanActivate {
     if (isPublic) return true;
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    const authorization = request.headers.authorization;
+    const token = accessTokenFromRequest(request);
 
-    if (!authorization?.startsWith("Bearer ")) {
-      throw new UnauthorizedException("Bearer authentication is required");
+    if (!token) {
+      throw new UnauthorizedException("Authentication is required");
     }
-
-    const token = authorization.slice("Bearer ".length).trim();
-    if (!token) throw new UnauthorizedException("Bearer token is required");
 
     try {
       const { payload } = await jwtVerify(token, this.jwks, {
