@@ -30,27 +30,32 @@ export class ImportsController {
     }
 
     const parsed = parseTransactionCsv(body.csv);
-    const failures: Array<{ row: number; message: string }> = [];
-    const validRows = parsed.rows;
+    const result = ingestTransactionBatch(this.repository, {
+      ownerId,
+      primaryAccountId: body.primaryAccountId,
+      counterAccountId: body.counterAccountId,
+      inputs: parsed.rows,
+      sourceKind: "csv",
+      providerId: body.providerId,
+      transactionIdFor: () => randomUUID(),
+    });
 
     try {
-      const result = await ingestTransactionBatch(this.repository, {
-        ownerId,
-        primaryAccountId: body.primaryAccountId,
-        counterAccountId: body.counterAccountId,
-        inputs: validRows,
-        sourceKind: "csv",
-        providerId: body.providerId,
-        transactionIdFor: () => randomUUID(),
-      });
+      const batch = await result;
+      const persistenceErrors = batch.failures.map((failure) => ({
+        row: failure.index + 2,
+        message: failure.message,
+      }));
 
       return {
-        importedCount: result.persisted.filter((item) => item.persistence === "inserted").length,
-        duplicateCount: result.persisted.filter((item) => item.persistence === "duplicate").length + result.duplicates.length,
-        rejectedCount: parsed.errors.length + failures.length,
+        importedCount: batch.persisted.filter((item) => item.persistence === "inserted").length,
+        duplicateCount:
+          batch.persisted.filter((item) => item.persistence === "duplicate").length +
+          batch.duplicates.length,
+        rejectedCount: parsed.errors.length + persistenceErrors.length,
         parseErrors: parsed.errors,
-        persistenceErrors: failures,
-        transactionIds: result.persisted.map((item) => item.transaction.transactionId),
+        persistenceErrors,
+        transactionIds: batch.persisted.map((item) => item.transaction.transactionId),
       };
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : "CSV import failed");
