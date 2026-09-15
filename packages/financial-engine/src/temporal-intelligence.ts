@@ -21,6 +21,7 @@ export interface RecurringTransaction {
   readonly averageIntervalDays: number;
   readonly cadence: RecurringCadence;
   readonly confidence: number;
+  readonly lastObservedAt?: string;
 }
 
 export interface TransactionAnomaly {
@@ -182,9 +183,12 @@ export function detectRecurringTransactions(
       0.4 + 0.15 * Math.min(sorted.length - 3, 3) + 0.25 * intervalConsistency + 0.2 * consistency,
     );
 
+    const lastObserved = sorted[sorted.length - 1];
+    if (!lastObserved) continue;
+
     results.push({
       key,
-      description: displayDescription(sorted[sorted.length - 1]),
+      description: displayDescription(lastObserved),
       type: sorted[0].type as "expense" | "income",
       currency,
       amountMinor: averageAmountMinor,
@@ -193,6 +197,7 @@ export function detectRecurringTransactions(
       averageIntervalDays: Number(averageIntervalDays.toFixed(1)),
       cadence,
       confidence: Number(confidence.toFixed(3)),
+      lastObservedAt: lastObserved.occurredAt,
     });
   }
 
