@@ -2,6 +2,15 @@ import type { CurrencyCode, Obligation, ObligationRecurrence } from "@afrifinos/
 import type { RecurringCadence, RecurringTransaction } from "./temporal-intelligence.js";
 
 export type ForecastHorizonDays = 30 | 60 | 90;
+export type LiquidityRiskLevel = "healthy" | "watch" | "high" | "critical";
+
+export interface LiquidityRisk {
+  readonly level: LiquidityRiskLevel;
+  readonly minimumProjectedBalanceMinor: bigint;
+  readonly safetyBufferMinor: bigint;
+  readonly shortfallMinor: bigint;
+  readonly firstShortfallDate?: string;
+}
 
 export interface ForecastPoint {
   readonly date: string;
@@ -21,6 +30,7 @@ export interface CashForecast {
   readonly endingBalanceMinor: bigint;
   readonly minimumProjectedBalanceMinor: bigint;
   readonly runwayDays: number | null;
+  readonly liquidityRisk: LiquidityRisk;
   readonly points: readonly ForecastPoint[];
 }
 
@@ -71,7 +81,6 @@ function obligationEvents(obligations: readonly Obligation[], horizonDays: numbe
     if (obligation.status !== "active" || obligation.amount.currency !== currency || !obligation.dueAt) continue;
     const dueAt = new Date(obligation.dueAt);
     if (Number.isNaN(dueAt.getTime())) continue;
-
     const recurrence: ObligationRecurrence = obligation.recurring ? (obligation.recurrence ?? "monthly") : "once";
     const interval = cadenceIntervalDays(recurrence);
     let day = Math.ceil((dueAt.getTime() - start.getTime()) / 86_400_000);
@@ -81,7 +90,6 @@ function obligationEvents(obligations: readonly Obligation[], horizonDays: numbe
       day += Math.ceil(elapsed / interval) * interval;
       while (day < 1) day += interval;
     }
-
     while (day <= horizonDays) {
       events.set(day, (events.get(day) ?? 0n) + absolute(obligation.amount.amountMinor));
       if (interval <= 0) break;
@@ -113,6 +121,7 @@ export function forecastCashFlow(input: {
   readonly averageMonthlyExpenseMinor: bigint | number | string;
   readonly recurring?: readonly RecurringTransaction[];
   readonly obligations?: readonly Obligation[];
+  readonly safetyBufferMinor?: bigint | number | string;
   readonly asOf?: string;
   readonly horizonDays?: ForecastHorizonDays;
 }): CashForecast {
@@ -120,7 +129,8 @@ export function forecastCashFlow(input: {
   const startingBalanceMinor = BigInt(input.startingBalanceMinor);
   const averageMonthlyIncomeMinor = BigInt(input.averageMonthlyIncomeMinor);
   const averageMonthlyExpenseMinor = BigInt(input.averageMonthlyExpenseMinor);
-  if (averageMonthlyIncomeMinor < 0n || averageMonthlyExpenseMinor < 0n) throw new Error("Forecast rates cannot be negative");
+  const safetyBufferMinor = BigInt(input.safetyBufferMinor ?? 0);
+  if (averageMonthlyIncomeMinor < 0n || averageMonthlyExpenseMinor < 0n || safetyBufferMinor < 0n) throw new Error("Forecast amounts cannot be negative");
 
   const start = new Date(input.asOf ?? new Date().toISOString());
   if (Number.isNaN(start.getTime())) throw new Error(`Invalid forecast date: ${input.asOf}`);
@@ -136,6 +146,7 @@ export function forecastCashFlow(input: {
   let projectedExpenseMinor = 0n;
   let minimumProjectedBalanceMinor = startingBalanceMinor;
   let runwayDays: number | null = null;
+  let firstShortfallDate: string | undefined;
 
   for (let day = 1; day <= horizonDays; day += 1) {
     const baselineDay = (day - 1) % 30;
@@ -146,8 +157,19 @@ export function forecastCashFlow(input: {
     projectedExpenseMinor += expense;
     minimumProjectedBalanceMinor = balance < minimumProjectedBalanceMinor ? balance : minimumProjectedBalanceMinor;
     if (runwayDays === null && balance <= 0n) runwayDays = day;
-    points.push({ date: addDays(start, day).toISOString(), projectedIncomeMinor: income, projectedExpenseMinor: expense, projectedNetCashFlowMinor: income - expense, projectedBalanceMinor: balance });
+    const point = { date: addDays(start, day).toISOString(), projectedIncomeMinor: income, projectedExpenseMinor: expense, projectedNetCashFlowMinor: income - expense, projectedBalanceMinor: balance };
+    points.push(point);
+    if (firstShortfallDate === undefined && balance < safetyBufferMinor) firstShortfallDate = point.date;
   }
 
-  return { currency: input.currency, startingBalanceMinor, horizonDays, projectedIncomeMinor, projectedExpenseMinor, projectedNetCashFlowMinor: projectedIncomeMinor - projectedExpenseMinor, endingBalanceMinor: balance, minimumProjectedBalanceMinor, runwayDays, points };
+  const shortfallMinor = safetyBufferMinor > minimumProjectedBalanceMinor ? safetyBufferMinor - minimumProjectedBalanceMinor : 0n;
+  const liquidityRisk: LiquidityRisk = {
+    level: minimumProjectedBalanceMinor <= 0n ? "critical" : minimumProjectedBalanceMinor < safetyBufferMinor ? "high" : minimumProjectedBalanceMinor < startingBalanceMinor / 2n ? "watch" : "healthy",
+    minimumProjectedBalanceMinor,
+    safetyBufferMinor,
+    shortfallMinor,
+    ...(firstShortfallDate ? { firstShortfallDate } : {}),
+  };
+
+  return { currency: input.currency, startingBalanceMinor, horizonDays, projectedIncomeMinor, projectedExpenseMinor, projectedNetCashFlowMinor: projectedIncomeMinor - projectedExpenseMinor, endingBalanceMinor: balance, minimumProjectedBalanceMinor, runwayDays, liquidityRisk, points };
 }
