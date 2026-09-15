@@ -11,3 +11,4 @@ export * from "./temporal-intelligence.js";
 export * from "./forecasting.js";
 export * from "./intelligence-contracts.js";
 export * from "./ai-analyst.js";
+export * from "./ai-prompt.js";
