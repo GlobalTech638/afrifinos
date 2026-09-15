@@ -42,7 +42,13 @@ function accessTokenFromRequest(request: Request): string | null {
     const name = part.slice(0, separator).trim();
     if (name !== cookieName) continue;
     const value = part.slice(separator + 1).trim();
-    return value ? decodeURIComponent(value) : null;
+    if (!value) return null;
+
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return null;
+    }
   }
 
   return null;
@@ -66,9 +72,7 @@ export class JwtAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = accessTokenFromRequest(request);
 
-    if (!token) {
-      throw new UnauthorizedException("Authentication is required");
-    }
+    if (!token) throw new UnauthorizedException("Authentication is required");
 
     try {
       const { payload } = await jwtVerify(token, this.jwks, {
