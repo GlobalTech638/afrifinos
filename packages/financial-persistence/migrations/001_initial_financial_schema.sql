@@ -23,14 +23,13 @@ CREATE TABLE accounts (
   owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   type account_type NOT NULL,
-  currency CHAR(3) NOT NULL,
+  currency CHAR(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
   status account_status NOT NULL DEFAULT 'active',
   provider_id UUID REFERENCES providers(id) ON DELETE SET NULL,
   external_account_id TEXT,
   opened_at TIMESTAMPTZ,
   archived_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (owner_id, id)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE UNIQUE INDEX accounts_provider_external_id_uq
@@ -39,10 +38,10 @@ CREATE UNIQUE INDEX accounts_provider_external_id_uq
 CREATE INDEX accounts_owner_idx ON accounts(owner_id);
 
 CREATE TABLE categories (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  parent_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+  parent_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
   UNIQUE (owner_id, name)
 );
 
@@ -54,9 +53,9 @@ CREATE TABLE transactions (
   occurred_at TIMESTAMPTZ NOT NULL,
   description TEXT,
   counterparty TEXT,
-  category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+  category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
   amount_minor BIGINT NOT NULL CHECK (amount_minor >= 0),
-  currency CHAR(3) NOT NULL,
+  currency CHAR(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
   source_kind source_kind NOT NULL,
   provider_id UUID REFERENCES providers(id) ON DELETE SET NULL,
   external_id TEXT,
@@ -75,7 +74,7 @@ CREATE TABLE ledger_entries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE RESTRICT,
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
-  currency CHAR(3) NOT NULL,
+  currency CHAR(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
   amount_minor BIGINT NOT NULL CHECK (amount_minor >= 0),
   direction ledger_direction NOT NULL,
   posted_at TIMESTAMPTZ NOT NULL,
@@ -91,7 +90,7 @@ CREATE TABLE assets (
   owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   value_minor BIGINT NOT NULL CHECK (value_minor >= 0),
-  currency CHAR(3) NOT NULL,
+  currency CHAR(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
   as_of TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -101,7 +100,7 @@ CREATE TABLE liabilities (
   owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   outstanding_minor BIGINT NOT NULL CHECK (outstanding_minor >= 0),
-  currency CHAR(3) NOT NULL,
+  currency CHAR(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
   as_of TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -111,7 +110,7 @@ CREATE TABLE obligations (
   owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   amount_minor BIGINT NOT NULL CHECK (amount_minor >= 0),
-  currency CHAR(3) NOT NULL,
+  currency CHAR(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
   due_at TIMESTAMPTZ,
   recurring BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -123,7 +122,7 @@ CREATE TABLE savings_goals (
   name TEXT NOT NULL,
   target_minor BIGINT NOT NULL CHECK (target_minor > 0),
   current_minor BIGINT NOT NULL DEFAULT 0 CHECK (current_minor >= 0),
-  currency CHAR(3) NOT NULL,
+  currency CHAR(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
   target_date DATE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -133,7 +132,7 @@ CREATE TABLE provider_balance_observations (
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   provider_id UUID REFERENCES providers(id) ON DELETE SET NULL,
   observed_balance_minor BIGINT NOT NULL,
-  currency CHAR(3) NOT NULL,
+  currency CHAR(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
   observed_at TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
