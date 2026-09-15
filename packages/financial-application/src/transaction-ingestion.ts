@@ -21,6 +21,7 @@ export interface IngestTransactionResult {
   readonly ledgerEntryCount: number;
   readonly categoryConfidence: number;
   readonly categoryMatchedKeywords: readonly string[];
+  readonly persistence: "inserted" | "duplicate";
 }
 
 function validateCommand(command: IngestTransactionCommand): void {
@@ -76,12 +77,13 @@ export async function ingestTransaction(
     counterAccountId: command.counterAccountId,
   });
 
-  await repository.saveTransactionWithLedger(transaction, entries);
+  const persistence = await repository.saveTransactionWithLedger(transaction, entries);
 
   return {
     transaction,
-    ledgerEntryCount: entries.length,
+    ledgerEntryCount: persistence === "duplicate" ? 0 : entries.length,
     categoryConfidence: enriched.categoryConfidence,
     categoryMatchedKeywords: enriched.categoryMatchedKeywords,
+    persistence,
   };
 }
