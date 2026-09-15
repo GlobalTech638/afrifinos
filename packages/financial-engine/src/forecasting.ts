@@ -30,10 +30,6 @@ function addDays(date: Date, days: number): Date {
   return result;
 }
 
-function dailyAmount(monthlyAmount: bigint): number {
-  return Number(monthlyAmount) / 30;
-}
-
 function cadenceIntervalDays(cadence: RecurringCadence): number {
   switch (cadence) {
     case "weekly": return 7;
@@ -44,29 +40,47 @@ function cadenceIntervalDays(cadence: RecurringCadence): number {
   }
 }
 
-function scheduledDays(item: RecurringTransaction, horizonDays: number): Set<number> {
+function nextOccurrenceDay(item: RecurringTransaction, start: Date): number | null {
+  if (!item.lastObservedAt) return Math.max(1, Math.round(item.averageIntervalDays || cadenceIntervalDays(item.cadence)));
+
+  const lastObserved = new Date(item.lastObservedAt);
+  if (Number.isNaN(lastObserved.getTime())) return null;
+
+  const elapsedDays = Math.floor((start.getTime() - lastObserved.getTime()) / 86_400_000);
   const interval = Math.max(1, Math.round(item.averageIntervalDays || cadenceIntervalDays(item.cadence)));
-  const days = new Set<number>();
-  for (let day = Math.max(1, Math.round(item.averageIntervalDays)); day <= horizonDays; day += interval) {
-    days.add(day);
-  }
-  return days;
+  const occurrencesPassed = Math.floor(Math.max(0, elapsedDays) / interval);
+  const nextDay = occurrencesPassed * interval + interval - elapsedDays;
+  return Math.max(1, nextDay);
 }
 
 function recurringEvents(
   recurring: readonly RecurringTransaction[],
   horizonDays: number,
   type: "income" | "expense",
+  start: Date,
 ): Map<number, bigint> {
   const events = new Map<number, bigint>();
   for (const item of recurring) {
     if (item.type !== type) continue;
-    const days = scheduledDays(item, horizonDays);
-    for (const day of days) {
+    const firstDay = nextOccurrenceDay(item, start);
+    if (firstDay === null) continue;
+    const interval = Math.max(1, Math.round(item.averageIntervalDays || cadenceIntervalDays(item.cadence)));
+    for (let day = firstDay; day <= horizonDays; day += interval) {
       events.set(day, (events.get(day) ?? 0n) + item.averageAmountMinor);
     }
   }
   return events;
+}
+
+function distributeMonthlyAmount(amountMinor: bigint, days: number): bigint[] {
+  if (days <= 0) return [];
+  const result = Array<bigint>(days).fill(amountMinor / BigInt(days));
+  let remainder = amountMinor - result.reduce((sum, value) => sum + value, 0n);
+  for (let index = 0; remainder > 0n; index = (index + 1) % days) {
+    result[index] = (result[index] ?? 0n) + 1n;
+    remainder -= 1n;
+  }
+  return result;
 }
 
 export function forecastCashFlow(input: {
@@ -86,25 +100,24 @@ export function forecastCashFlow(input: {
     throw new Error("Forecast rates cannot be negative");
   }
 
-  const baselineIncomePerDay = dailyAmount(averageMonthlyIncomeMinor);
-  const baselineExpensePerDay = dailyAmount(averageMonthlyExpenseMinor);
-  const recurringIncome = recurringEvents(input.recurring ?? [], horizonDays, "income");
-  const recurringExpense = recurringEvents(input.recurring ?? [], horizonDays, "expense");
+  const start = new Date(input.asOf ?? new Date().toISOString());
+  if (Number.isNaN(start.getTime())) throw new Error(`Invalid forecast date: ${input.asOf}`);
+
+  const baselineIncome = distributeMonthlyAmount(averageMonthlyIncomeMinor, 30);
+  const baselineExpense = distributeMonthlyAmount(averageMonthlyExpenseMinor, 30);
+  const recurringIncome = recurringEvents(input.recurring ?? [], horizonDays, "income", start);
+  const recurringExpense = recurringEvents(input.recurring ?? [], horizonDays, "expense", start);
   const points: ForecastPoint[] = [];
   let balance = startingBalanceMinor;
   let projectedIncomeMinor = 0n;
   let projectedExpenseMinor = 0n;
   let minimumProjectedBalanceMinor = startingBalanceMinor;
   let runwayDays: number | null = null;
-  const start = new Date(input.asOf ?? new Date().toISOString());
-
-  if (Number.isNaN(start.getTime())) throw new Error(`Invalid forecast date: ${input.asOf}`);
 
   for (let day = 1; day <= horizonDays; day += 1) {
-    const baselineIncome = BigInt(Math.round(baselineIncomePerDay));
-    const baselineExpense = BigInt(Math.round(baselineExpensePerDay));
-    const income = baselineIncome + (recurringIncome.get(day) ?? 0n);
-    const expense = baselineExpense + (recurringExpense.get(day) ?? 0n);
+    const baselineDay = (day - 1) % 30;
+    const income = (baselineIncome[baselineDay] ?? 0n) + (recurringIncome.get(day) ?? 0n);
+    const expense = (baselineExpense[baselineDay] ?? 0n) + (recurringExpense.get(day) ?? 0n);
 
     balance += income - expense;
     projectedIncomeMinor += income;
