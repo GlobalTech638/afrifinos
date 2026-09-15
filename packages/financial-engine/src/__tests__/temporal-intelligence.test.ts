@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildTemporalIntelligence, detectRecurringTransactions, detectSpendingAnomalies } from "../temporal-intelligence.js";
+import {
+  buildTemporalIntelligence,
+  calculateMonthlyForecastBaseline,
+  detectRecurringTransactions,
+  detectSpendingAnomalies,
+} from "../temporal-intelligence.js";
 import type { Transaction } from "@afrifinos/financial-domain";
 
 function transaction(
@@ -37,6 +42,25 @@ describe("temporal intelligence", () => {
       netCashFlowMinor: 150000n,
       transactionCount: 2,
     }]);
+  });
+
+  it("calculates averages from observed monthly periods instead of total history", () => {
+    const result = calculateMonthlyForecastBaseline([
+      { period: "2026-01", incomeMinor: 100000n, expenseMinor: 50000n, netCashFlowMinor: 50000n, transactionCount: 2 },
+      { period: "2026-02", incomeMinor: 200000n, expenseMinor: 100000n, netCashFlowMinor: 100000n, transactionCount: 2 },
+    ]);
+
+    expect(result.monthsObserved).toBe(2);
+    expect(result.averageMonthlyIncomeMinor).toBe(150000n);
+    expect(result.averageMonthlyExpenseMinor).toBe(75000n);
+  });
+
+  it("returns zero baselines when there is no observed history", () => {
+    expect(calculateMonthlyForecastBaseline([])).toEqual({
+      monthsObserved: 0,
+      averageMonthlyIncomeMinor: 0n,
+      averageMonthlyExpenseMinor: 0n,
+    });
   });
 
   it("detects approximately monthly recurring expenses", () => {
