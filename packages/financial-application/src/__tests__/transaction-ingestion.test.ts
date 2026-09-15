@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { LedgerEntry, Transaction } from "@afrifinos/financial-domain";
-import type { TransactionWriteRepository } from "@afrifinos/financial-persistence";
+import type { TransactionWriteRepository, TransactionWriteResult } from "@afrifinos/financial-persistence";
 import { ingestTransaction } from "../transaction-ingestion.js";
 
 class InMemoryWriteRepository implements TransactionWriteRepository {
   readonly transactions: Transaction[] = [];
   readonly entries: LedgerEntry[] = [];
   readonly ownedAccounts = new Set(["mpesa", "bank", "expense", "income"]);
+  readonly duplicateTransactionIds = new Set<string>();
 
   async assertAccountsOwnedBy(ownerId: string, accountIds: readonly string[]): Promise<void> {
     if (ownerId !== "user-1" || accountIds.some((accountId) => !this.ownedAccounts.has(accountId))) {
@@ -14,9 +15,14 @@ class InMemoryWriteRepository implements TransactionWriteRepository {
     }
   }
 
-  async saveTransactionWithLedger(transaction: Transaction, entries: readonly LedgerEntry[]): Promise<void> {
+  async saveTransactionWithLedger(
+    transaction: Transaction,
+    entries: readonly LedgerEntry[],
+  ): Promise<TransactionWriteResult> {
+    if (this.duplicateTransactionIds.has(transaction.transactionId)) return "duplicate";
     this.transactions.push(transaction);
     this.entries.push(...entries);
+    return "inserted";
   }
 }
 
@@ -44,10 +50,36 @@ describe("ingestTransaction", () => {
     expect(result.transaction.description).toBe("Naivas groceries");
     expect(result.transaction.categoryId).toBe("food");
     expect(result.transaction.total.amountMinor).toBe(2500n);
+    expect(result.persistence).toBe("inserted");
     expect(result.ledgerEntryCount).toBe(2);
     expect(repository.transactions).toHaveLength(1);
     expect(repository.entries).toHaveLength(2);
     expect(repository.entries.map((entry) => entry.direction)).toEqual(["debit", "credit"]);
+  });
+
+  it("reports duplicates without creating ledger entries", async () => {
+    const repository = new InMemoryWriteRepository();
+    repository.duplicateTransactionIds.add("tx-duplicate");
+
+    const result = await ingestTransaction(repository, {
+      ownerId: "user-1",
+      primaryAccountId: "mpesa",
+      counterAccountId: "expense",
+      transactionId: "tx-duplicate",
+      sourceKind: "provider_api",
+      providerId: "mpesa",
+      input: {
+        occurredAt: "2026-09-14T08:00:00Z",
+        description: "Naivas groceries",
+        amountMinor: 2500n,
+        currency: "KES",
+      },
+    });
+
+    expect(result.persistence).toBe("duplicate");
+    expect(result.ledgerEntryCount).toBe(0);
+    expect(repository.transactions).toHaveLength(0);
+    expect(repository.entries).toHaveLength(0);
   });
 
   it("preserves negative raw amounts as positive authoritative money while inferring income", async () => {
