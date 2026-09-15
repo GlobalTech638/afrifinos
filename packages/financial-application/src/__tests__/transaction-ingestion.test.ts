@@ -6,6 +6,13 @@ import { ingestTransaction } from "../transaction-ingestion.js";
 class InMemoryWriteRepository implements TransactionWriteRepository {
   readonly transactions: Transaction[] = [];
   readonly entries: LedgerEntry[] = [];
+  readonly ownedAccounts = new Set(["mpesa", "bank", "expense", "income"]);
+
+  async assertAccountsOwnedBy(ownerId: string, accountIds: readonly string[]): Promise<void> {
+    if (ownerId !== "user-1" || accountIds.some((accountId) => !this.ownedAccounts.has(accountId))) {
+      throw new Error("One or more accounts do not belong to the authenticated owner");
+    }
+  }
 
   async saveTransactionWithLedger(transaction: Transaction, entries: readonly LedgerEntry[]): Promise<void> {
     this.transactions.push(transaction);
@@ -81,6 +88,27 @@ describe("ingestTransaction", () => {
         currency: "KES",
       },
     })).rejects.toThrow("Primary and counter accounts must be different");
+
+    expect(repository.transactions).toHaveLength(0);
+    expect(repository.entries).toHaveLength(0);
+  });
+
+  it("rejects an account outside the owner's account set", async () => {
+    const repository = new InMemoryWriteRepository();
+
+    await expect(ingestTransaction(repository, {
+      ownerId: "user-1",
+      primaryAccountId: "mpesa",
+      counterAccountId: "other-owner-account",
+      transactionId: "tx-cross-owner",
+      sourceKind: "manual",
+      input: {
+        occurredAt: "2026-09-14T08:00:00Z",
+        description: "Groceries",
+        amountMinor: 2500n,
+        currency: "KES",
+      },
+    })).rejects.toThrow("One or more accounts do not belong to the authenticated owner");
 
     expect(repository.transactions).toHaveLength(0);
     expect(repository.entries).toHaveLength(0);
