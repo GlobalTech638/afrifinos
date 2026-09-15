@@ -20,9 +20,31 @@ export interface SavingsMetrics {
 }
 
 /**
+ * Converts a bigint ratio to a JavaScript number without first converting
+ * either operand to Number. This avoids Infinity/precision loss for large
+ * monetary values while preserving the ratio's useful decimal precision.
+ */
+export function ratioOfBigInts(numerator: bigint, denominator: bigint): number {
+  if (denominator === 0n) throw new Error("Cannot divide by zero");
+
+  const sign = (numerator < 0n) === (denominator < 0n) ? 1 : -1;
+  const numeratorDigits = absolute(numerator).toString();
+  const denominatorDigits = absolute(denominator).toString();
+  const significantDigits = 15;
+  const numeratorPrecision = Math.min(significantDigits, numeratorDigits.length);
+  const denominatorPrecision = Math.min(significantDigits, denominatorDigits.length);
+  const numeratorSignificand = Number(numeratorDigits.slice(0, numeratorPrecision));
+  const denominatorSignificand = Number(denominatorDigits.slice(0, denominatorPrecision));
+  const exponent =
+    numeratorDigits.length - numeratorPrecision -
+    (denominatorDigits.length - denominatorPrecision);
+
+  return sign * (numeratorSignificand / denominatorSignificand) * 10 ** exponent;
+}
+
+/**
  * Computes account-level cash movement from classified ledger entries.
- * The caller supplies the account IDs that belong to the user's cash/liquid
- * assets and the transaction IDs classified as income or expense.
+ * The caller supplies the transaction IDs classified as income or expense.
  */
 export function calculateCashFlow(
   entries: readonly LedgerEntry[],
@@ -61,7 +83,7 @@ export function calculateSavingsMetrics(
   return {
     incomeMinor,
     savingsMinor,
-    savingsRate: Number(savingsMinor) / Number(incomeMinor),
+    savingsRate: ratioOfBigInts(savingsMinor, incomeMinor),
   };
 }
 
@@ -76,6 +98,10 @@ export function calculateDebtMetrics(
   return {
     debtServiceMinor,
     incomeMinor,
-    debtBurdenRatio: Number(debtServiceMinor) / Number(incomeMinor),
+    debtBurdenRatio: ratioOfBigInts(debtServiceMinor, incomeMinor),
   };
+}
+
+function absolute(value: bigint): bigint {
+  return value < 0n ? -value : value;
 }
