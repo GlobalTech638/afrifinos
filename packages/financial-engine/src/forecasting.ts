@@ -1,5 +1,5 @@
 import type { CurrencyCode } from "@afrifinos/financial-domain";
-import type { RecurringTransaction } from "./temporal-intelligence.js";
+import type { RecurringCadence, RecurringTransaction } from "./temporal-intelligence.js";
 
 export type ForecastHorizonDays = 30 | 60 | 90;
 
@@ -34,10 +34,39 @@ function dailyAmount(monthlyAmount: bigint): number {
   return Number(monthlyAmount) / 30;
 }
 
-function projectedRecurringDaily(recurring: readonly RecurringTransaction[], type: "income" | "expense"): number {
-  return recurring
-    .filter((item) => item.type === type)
-    .reduce((sum, item) => sum + Number(item.amountMinor) / Math.max(item.averageIntervalDays, 1), 0);
+function cadenceIntervalDays(cadence: RecurringCadence): number {
+  switch (cadence) {
+    case "weekly": return 7;
+    case "biweekly": return 14;
+    case "monthly": return 30;
+    case "quarterly": return 91;
+    case "annual": return 365;
+  }
+}
+
+function scheduledDays(item: RecurringTransaction, horizonDays: number): Set<number> {
+  const interval = Math.max(1, Math.round(item.averageIntervalDays || cadenceIntervalDays(item.cadence)));
+  const days = new Set<number>();
+  for (let day = Math.max(1, Math.round(item.averageIntervalDays)); day <= horizonDays; day += interval) {
+    days.add(day);
+  }
+  return days;
+}
+
+function recurringEvents(
+  recurring: readonly RecurringTransaction[],
+  horizonDays: number,
+  type: "income" | "expense",
+): Map<number, bigint> {
+  const events = new Map<number, bigint>();
+  for (const item of recurring) {
+    if (item.type !== type) continue;
+    const days = scheduledDays(item, horizonDays);
+    for (const day of days) {
+      events.set(day, (events.get(day) ?? 0n) + item.averageAmountMinor);
+    }
+  }
+  return events;
 }
 
 export function forecastCashFlow(input: {
@@ -51,12 +80,16 @@ export function forecastCashFlow(input: {
 }): CashForecast {
   const horizonDays = input.horizonDays ?? 90;
   const startingBalanceMinor = BigInt(input.startingBalanceMinor);
-  const baselineIncomePerDay = dailyAmount(BigInt(input.averageMonthlyIncomeMinor));
-  const baselineExpensePerDay = dailyAmount(BigInt(input.averageMonthlyExpenseMinor));
-  const recurringIncomePerDay = projectedRecurringDaily(input.recurring ?? [], "income");
-  const recurringExpensePerDay = projectedRecurringDaily(input.recurring ?? [], "expense");
-  const incomePerDay = Math.max(baselineIncomePerDay, recurringIncomePerDay);
-  const expensePerDay = Math.max(baselineExpensePerDay, recurringExpensePerDay);
+  const averageMonthlyIncomeMinor = BigInt(input.averageMonthlyIncomeMinor);
+  const averageMonthlyExpenseMinor = BigInt(input.averageMonthlyExpenseMinor);
+  if (averageMonthlyIncomeMinor < 0n || averageMonthlyExpenseMinor < 0n) {
+    throw new Error("Forecast rates cannot be negative");
+  }
+
+  const baselineIncomePerDay = dailyAmount(averageMonthlyIncomeMinor);
+  const baselineExpensePerDay = dailyAmount(averageMonthlyExpenseMinor);
+  const recurringIncome = recurringEvents(input.recurring ?? [], horizonDays, "income");
+  const recurringExpense = recurringEvents(input.recurring ?? [], horizonDays, "expense");
   const points: ForecastPoint[] = [];
   let balance = startingBalanceMinor;
   let projectedIncomeMinor = 0n;
@@ -66,17 +99,19 @@ export function forecastCashFlow(input: {
   const start = new Date(input.asOf ?? new Date().toISOString());
 
   if (Number.isNaN(start.getTime())) throw new Error(`Invalid forecast date: ${input.asOf}`);
-  if (incomePerDay < 0 || expensePerDay < 0) throw new Error("Forecast rates cannot be negative");
 
   for (let day = 1; day <= horizonDays; day += 1) {
-    const income = BigInt(Math.round(incomePerDay));
-    const expense = BigInt(Math.round(expensePerDay));
+    const baselineIncome = BigInt(Math.round(baselineIncomePerDay));
+    const baselineExpense = BigInt(Math.round(baselineExpensePerDay));
+    const income = baselineIncome + (recurringIncome.get(day) ?? 0n);
+    const expense = baselineExpense + (recurringExpense.get(day) ?? 0n);
+
     balance += income - expense;
     projectedIncomeMinor += income;
     projectedExpenseMinor += expense;
     minimumProjectedBalanceMinor = balance < minimumProjectedBalanceMinor ? balance : minimumProjectedBalanceMinor;
 
-    if (runwayDays === null && balance <= 0n && expensePerDay > incomePerDay) runwayDays = day;
+    if (runwayDays === null && balance <= 0n) runwayDays = day;
 
     points.push({
       date: addDays(start, day).toISOString(),
