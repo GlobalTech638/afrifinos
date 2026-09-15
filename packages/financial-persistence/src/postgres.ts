@@ -141,6 +141,24 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
     return result.rows.map(accountFromRow);
   }
 
+  async assertAccountsOwnedBy(ownerId: string, accountIds: readonly string[]): Promise<void> {
+    const uniqueAccountIds = [...new Set(accountIds)];
+    if (uniqueAccountIds.length === 0) throw new Error("At least one account is required");
+
+    const placeholders = uniqueAccountIds.map((_, index) => `$${index + 2}`).join(", ");
+    const result = await this.client.query<{ count: string | number }>(
+      `SELECT COUNT(*)::int AS count
+       FROM accounts
+       WHERE owner_id = $1 AND id IN (${placeholders})`,
+      [ownerId, ...uniqueAccountIds],
+    );
+
+    const count = Number(result.rows[0]?.count ?? 0);
+    if (count !== uniqueAccountIds.length) {
+      throw new Error("One or more accounts do not belong to the authenticated owner");
+    }
+  }
+
   async saveTransaction(transaction: Transaction): Promise<void> {
     await this.client.query(
       `INSERT INTO transactions
