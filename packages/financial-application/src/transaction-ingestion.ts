@@ -28,9 +28,15 @@ function validateCommand(command: IngestTransactionCommand): void {
   if (!command.primaryAccountId.trim()) throw new Error("primaryAccountId cannot be empty");
   if (!command.counterAccountId.trim()) throw new Error("counterAccountId cannot be empty");
   if (!command.transactionId.trim()) throw new Error("transactionId cannot be empty");
-  if (command.primaryAccountId === command.counterAccountId) throw new Error("Primary and counter accounts must be different");
-  if (command.providerId && !command.providerId.trim()) throw new Error("providerId cannot be empty when provided");
-  if (command.input.externalId && !command.providerId) throw new Error("providerId is required when externalId is provided");
+  if (command.primaryAccountId === command.counterAccountId) {
+    throw new Error("Primary and counter accounts must be different");
+  }
+  if (command.providerId !== undefined && !command.providerId.trim()) {
+    throw new Error("providerId cannot be empty when provided");
+  }
+  if (command.input.externalId && !command.providerId) {
+    throw new Error("providerId is required when externalId is provided");
+  }
 }
 
 export async function ingestTransaction(
@@ -38,10 +44,17 @@ export async function ingestTransaction(
   command: IngestTransactionCommand,
 ): Promise<IngestTransactionResult> {
   validateCommand(command);
-  await repository.assertAccountsOwnedBy(command.ownerId, [command.primaryAccountId, command.counterAccountId]);
+  await repository.assertAccountsOwnedBy(command.ownerId, [
+    command.primaryAccountId,
+    command.counterAccountId,
+  ]);
 
   if (command.providerId && command.input.externalId) {
-    const existing = await repository.getTransactionByProviderExternalId(command.ownerId, command.providerId, command.input.externalId);
+    const existing = await repository.getTransactionByProviderExternalId(
+      command.ownerId,
+      command.providerId,
+      command.input.externalId,
+    );
     if (existing) return duplicateResult(existing);
   }
 
@@ -61,7 +74,10 @@ export async function ingestTransaction(
     description: enriched.description,
     counterparty: enriched.counterparty,
     categoryId: enriched.categoryId,
-    total: { amountMinor: enriched.amountMinor < 0n ? -enriched.amountMinor : enriched.amountMinor, currency: enriched.currency },
+    total: {
+      amountMinor: enriched.amountMinor < 0n ? -enriched.amountMinor : enriched.amountMinor,
+      currency: enriched.currency,
+    },
     provenance: enriched.provenance,
   };
 
@@ -78,10 +94,15 @@ export async function ingestTransaction(
   const persistence = await repository.saveTransactionWithLedger(transaction, entries);
   if (persistence === "duplicate") {
     if (!command.providerId || !command.input.externalId) {
-      throw new Error("Transaction insert conflicted without a provider external identifier");
+      throw new Error("Transaction write conflicted with an existing record but no canonical external identity is available");
     }
-    const canonical = await repository.getTransactionByProviderExternalId(command.ownerId, command.providerId, command.input.externalId);
-    if (!canonical) throw new Error("Transaction insert conflicted but canonical transaction could not be recovered");
+
+    const canonical = await repository.getTransactionByProviderExternalId(
+      command.ownerId,
+      command.providerId,
+      command.input.externalId,
+    );
+    if (!canonical) throw new Error("Transaction write reported a duplicate but the canonical transaction could not be loaded");
     return duplicateResult(canonical);
   }
 
