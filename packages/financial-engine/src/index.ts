@@ -10,6 +10,7 @@ export * from "./financial-summary.js";
 export * from "./temporal-intelligence.js";
 export * from "./forecasting.js";
 export * from "./intelligence-contracts.js";
+export * from "./intelligence-dto.js";
 export * from "./ai-analyst.js";
 export * from "./ai-prompt.js";
 export * from "./ai-validation.js";
