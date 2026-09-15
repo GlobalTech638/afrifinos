@@ -38,6 +38,10 @@ export async function ingestTransaction(
   command: IngestTransactionCommand,
 ): Promise<IngestTransactionResult> {
   validateCommand(command);
+  await repository.assertAccountsOwnedBy(command.ownerId, [
+    command.primaryAccountId,
+    command.counterAccountId,
+  ]);
 
   const enriched = processTransaction(command.input, {
     sourceKind: command.sourceKind,
