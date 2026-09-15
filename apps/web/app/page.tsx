@@ -17,9 +17,9 @@ type Intelligence = {
     debt: { debtBurdenRatio: number | null };
     healthScore: { score: number; band: string };
   };
-  forecast: { projectedEndingBalanceMinor: string; minimumProjectedBalanceMinor: string; runwayDays: number | null };
+  forecast: { endingBalanceMinor: string; minimumProjectedBalanceMinor: string; runwayDays: number | null };
   facts: { id: string; statement: string; severity?: string }[];
-  temporal: { recurring: { id: string; description: string; averageAmountMinor: string; cadence: string }[] };
+  temporal: { recurring: { key: string; description: string; averageAmountMinor: string; cadence: string }[] };
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -29,13 +29,25 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/financial/intelligence?currency=KES`, { credentials: "include" })
+    const controller = new AbortController();
+
+    fetch(`${API_BASE}/financial/intelligence?currency=KES`, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    })
       .then(async (response) => {
+        if (response.status === 401) throw new Error("Please sign in to view your financial intelligence.");
         if (!response.ok) throw new Error(`Financial API returned ${response.status}`);
         return response.json() as Promise<Intelligence>;
       })
       .then(setData)
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Unable to load financial intelligence"));
+      .catch((cause: unknown) => {
+        if (cause instanceof DOMException && cause.name === "AbortError") return;
+        setError(cause instanceof Error ? cause.message : "Unable to load financial intelligence");
+      });
+
+    return () => controller.abort();
   }, []);
 
   if (error) return <State title="Unable to load your financial intelligence" detail={error} />;
@@ -61,12 +73,12 @@ export default function HomePage() {
 
         <div className="grid two">
           <section className="card"><h2>Financial health</h2><div className="health"><div className="score">{score}</div><div><div className="score-label">{capitalize(summary.healthScore.band)}</div><div className="metric-note">Explainable score from cash flow, savings, debt and resilience.</div><div className="progress"><div style={{ width: `${Math.max(0, Math.min(100, score))}%` }} /></div></div></div></section>
-          <section className="card"><h2>90-day outlook</h2><div className="forecast"><div className="forecast-box"><small>Projected balance</small><strong>{formatMinor(data.forecast.projectedEndingBalanceMinor)}</strong></div><div className="forecast-box"><small>Minimum balance</small><strong>{formatMinor(data.forecast.minimumProjectedBalanceMinor)}</strong></div><div className="forecast-box"><small>Cash runway</small><strong>{data.forecast.runwayDays === null ? "Beyond horizon" : `${data.forecast.runwayDays} days`}</strong></div></div></section>
+          <section className="card"><h2>90-day outlook</h2><div className="forecast"><div className="forecast-box"><small>Projected balance</small><strong>{formatMinor(data.forecast.endingBalanceMinor)}</strong></div><div className="forecast-box"><small>Minimum balance</small><strong>{formatMinor(data.forecast.minimumProjectedBalanceMinor)}</strong></div><div className="forecast-box"><small>Cash runway</small><strong>{data.forecast.runwayDays === null ? "Beyond horizon" : `${data.forecast.runwayDays} days`}</strong></div></div></section>
         </div>
 
         <div className="grid two">
           <section className="card"><h2>Financial signals</h2><div className="list">{data.facts.length === 0 ? <div className="empty">No material signals detected.</div> : data.facts.map((fact) => <div className="item" key={fact.id}><div><strong>{fact.statement}</strong><small>{fact.severity ?? "info"}</small></div><span className={fact.severity === "critical" ? "warning" : ""}>{fact.severity === "critical" ? "Review" : "Signal"}</span></div>)}</div></section>
-          <section className="card"><h2>Recurring commitments</h2><div className="list">{data.temporal.recurring.length === 0 ? <div className="empty">No recurring pattern detected yet.</div> : data.temporal.recurring.slice(0, 5).map((item) => <div className="item" key={item.id}><div><strong>{item.description}</strong><small>{item.cadence}</small></div><span className="amount">{formatMinor(item.averageAmountMinor)}</span></div>)}</div></section>
+          <section className="card"><h2>Recurring commitments</h2><div className="list">{data.temporal.recurring.length === 0 ? <div className="empty">No recurring pattern detected yet.</div> : data.temporal.recurring.slice(0, 5).map((item) => <div className="item" key={item.key}><div><strong>{item.description}</strong><small>{item.cadence}</small></div><span className="amount">{formatMinor(item.averageAmountMinor)}</span></div>)}</div></section>
         </div>
 
         <div className="card footnote">Net cash flow: <strong>{formatMinor(summary.cashFlow.netCashFlowMinor)}</strong> · Historical income {money.format(income)} · expenses {money.format(expenses)}</div>
