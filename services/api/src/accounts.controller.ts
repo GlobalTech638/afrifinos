@@ -1,6 +1,7 @@
-import { Controller, Get, Headers, BadRequestException, Inject } from "@nestjs/common";
+import { Controller, Get, Inject } from "@nestjs/common";
 import type { FinancialRepository } from "@afrifinos/financial-persistence";
 import { FINANCIAL_REPOSITORY } from "./app.module.js";
+import { OwnerId } from "./auth-context.js";
 
 @Controller("accounts")
 export class AccountsController {
@@ -9,10 +10,7 @@ export class AccountsController {
   ) {}
 
   @Get()
-  async list(@Headers("x-owner-id") ownerId?: string) {
-    if (!ownerId?.trim()) {
-      throw new BadRequestException("x-owner-id header is required until authentication is implemented");
-    }
-    return this.repository.getAccounts(ownerId.trim());
+  async list(@OwnerId() ownerId: string) {
+    return this.repository.getAccounts(ownerId);
   }
 }
