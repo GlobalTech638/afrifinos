@@ -1,7 +1,6 @@
 import type { Transaction } from "@afrifinos/financial-domain";
 import type { RawTransaction } from "@afrifinos/financial-engine";
-import { buildLedgerEntries } from "@afrifinos/financial-engine";
-import { processTransaction } from "@afrifinos/financial-engine";
+import { buildLedgerEntries, processTransaction } from "@afrifinos/financial-engine";
 import type { TransactionWriteRepository } from "@afrifinos/financial-persistence";
 
 export interface IngestTransactionCommand {
@@ -32,6 +31,12 @@ function validateCommand(command: IngestTransactionCommand): void {
   if (command.primaryAccountId === command.counterAccountId) {
     throw new Error("Primary and counter accounts must be different");
   }
+  if (command.providerId && !command.providerId.trim()) {
+    throw new Error("providerId cannot be empty when provided");
+  }
+  if (command.input.externalId && !command.providerId) {
+    throw new Error("providerId is required when externalId is provided");
+  }
 }
 
 export async function ingestTransaction(
@@ -43,6 +48,23 @@ export async function ingestTransaction(
     command.primaryAccountId,
     command.counterAccountId,
   ]);
+
+  if (command.providerId && command.input.externalId) {
+    const existing = await repository.getTransactionByProviderExternalId(
+      command.ownerId,
+      command.providerId,
+      command.input.externalId,
+    );
+    if (existing) {
+      return {
+        transaction: existing,
+        ledgerEntryCount: 0,
+        categoryConfidence: 1,
+        categoryMatchedKeywords: [],
+        persistence: "duplicate",
+      };
+    }
+  }
 
   const enriched = processTransaction(command.input, {
     sourceKind: command.sourceKind,
