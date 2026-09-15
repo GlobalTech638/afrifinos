@@ -4,6 +4,7 @@ import type { FinancialRepository } from "@afrifinos/financial-persistence";
 import {
   buildFinancialSummary,
   buildTemporalIntelligence,
+  calculateMonthlyForecastBaseline,
   createFinancialIntelligenceSnapshot,
   forecastCashFlow,
   toFinancialIntelligenceDto,
@@ -45,11 +46,12 @@ export class ApiFinancialService {
       });
 
       const temporal = buildTemporalIntelligence(transactions, currency);
+      const baseline = calculateMonthlyForecastBaseline(temporal.periods);
       const forecast = forecastCashFlow({
         currency,
         startingBalanceMinor: summary.liquidBalanceMinor,
-        averageMonthlyIncomeMinor: summary.cashFlow.incomeMinor,
-        averageMonthlyExpenseMinor: summary.cashFlow.expenseMinor,
+        averageMonthlyIncomeMinor: baseline.averageMonthlyIncomeMinor,
+        averageMonthlyExpenseMinor: baseline.averageMonthlyExpenseMinor,
         recurring: temporal.recurring,
       });
 
