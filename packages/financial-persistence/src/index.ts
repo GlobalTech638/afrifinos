@@ -21,6 +21,7 @@ export interface FinancialRepository {
 }
 
 export interface TransactionWriteRepository {
+  assertAccountsOwnedBy(ownerId: string, accountIds: readonly string[]): Promise<void>;
   saveTransactionWithLedger(
     transaction: Transaction,
     entries: readonly LedgerEntry[],
