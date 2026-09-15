@@ -8,13 +8,18 @@ export interface PeriodCashFlow {
   readonly transactionCount: number;
 }
 
+export type RecurringCadence = "weekly" | "biweekly" | "monthly" | "quarterly" | "annual";
+
 export interface RecurringTransaction {
   readonly key: string;
+  readonly description: string;
   readonly type: "expense" | "income";
   readonly currency: CurrencyCode;
   readonly amountMinor: bigint;
+  readonly averageAmountMinor: bigint;
   readonly occurrenceCount: number;
   readonly averageIntervalDays: number;
+  readonly cadence: RecurringCadence;
   readonly confidence: number;
 }
 
@@ -53,8 +58,30 @@ function normalizedKey(transaction: Transaction): string {
     .replace(/\s+/g, " ");
 }
 
+function displayDescription(transaction: Transaction): string {
+  return (transaction.counterparty ?? transaction.description ?? "Recurring transaction").trim();
+}
+
 function effectiveAmount(transaction: Transaction): bigint {
   return transaction.total.amountMinor < 0n ? -transaction.total.amountMinor : transaction.total.amountMinor;
+}
+
+function cadenceForInterval(days: number): RecurringCadence | null {
+  if (days >= 5 && days <= 10) return "weekly";
+  if (days >= 11 && days <= 18) return "biweekly";
+  if (days >= 20 && days <= 40) return "monthly";
+  if (days >= 80 && days <= 100) return "quarterly";
+  if (days >= 330 && days <= 400) return "annual";
+  return null;
+}
+
+function amountConsistency(amounts: readonly bigint[]): number {
+  if (amounts.length < 2) return 1;
+  const values = amounts.map(Number);
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  if (mean <= 0) return 0;
+  const meanAbsoluteDeviation = values.reduce((sum, value) => sum + Math.abs(value - mean), 0) / values.length;
+  return Math.max(0, 1 - meanAbsoluteDeviation / mean);
 }
 
 export function calculatePeriodCashFlow(
@@ -96,11 +123,7 @@ export function calculateMonthlyForecastBaseline(
   periods: readonly PeriodCashFlow[],
 ): MonthlyForecastBaseline {
   if (periods.length === 0) {
-    return {
-      monthsObserved: 0,
-      averageMonthlyIncomeMinor: 0n,
-      averageMonthlyExpenseMinor: 0n,
-    };
+    return { monthsObserved: 0, averageMonthlyIncomeMinor: 0n, averageMonthlyExpenseMinor: 0n };
   }
 
   const totalIncome = periods.reduce((sum, period) => sum + period.incomeMinor, 0n);
@@ -137,23 +160,39 @@ export function detectRecurringTransactions(
     for (let index = 1; index < sorted.length; index += 1) {
       const previous = new Date(sorted[index - 1].occurredAt).getTime();
       const current = new Date(sorted[index].occurredAt).getTime();
-      intervals.push((current - previous) / 86_400_000);
+      const interval = (current - previous) / 86_400_000;
+      if (!Number.isFinite(interval) || interval <= 0) continue;
+      intervals.push(interval);
     }
 
+    if (intervals.length < 2) continue;
     const averageIntervalDays = intervals.reduce((sum, value) => sum + value, 0) / intervals.length;
+    const cadence = cadenceForInterval(averageIntervalDays);
+    if (!cadence) continue;
+
     const intervalDeviation = intervals.reduce((sum, value) => sum + Math.abs(value - averageIntervalDays), 0) / intervals.length;
     const intervalConsistency = Math.max(0, 1 - intervalDeviation / Math.max(averageIntervalDays, 1));
-    if (averageIntervalDays < 20 || averageIntervalDays > 40 || intervalConsistency < 0.65) continue;
+    const amounts = sorted.map(effectiveAmount);
+    const consistency = amountConsistency(amounts);
+    if (intervalConsistency < 0.65 || consistency < 0.75) continue;
 
-    const amountMinor = sorted.reduce((sum, transaction) => sum + effectiveAmount(transaction), 0n) / BigInt(sorted.length);
+    const averageAmountMinor = amounts.reduce((sum, amount) => sum + amount, 0n) / BigInt(amounts.length);
+    const confidence = Math.min(
+      1,
+      0.4 + 0.15 * Math.min(sorted.length - 3, 3) + 0.25 * intervalConsistency + 0.2 * consistency,
+    );
+
     results.push({
       key,
+      description: displayDescription(sorted[sorted.length - 1]),
       type: sorted[0].type as "expense" | "income",
       currency,
-      amountMinor,
+      amountMinor: averageAmountMinor,
+      averageAmountMinor,
       occurrenceCount: sorted.length,
       averageIntervalDays: Number(averageIntervalDays.toFixed(1)),
-      confidence: Number(Math.min(1, 0.5 + 0.15 * Math.min(sorted.length - 3, 3) + 0.35 * intervalConsistency).toFixed(3)),
+      cadence,
+      confidence: Number(confidence.toFixed(3)),
     });
   }
 
