@@ -28,3 +28,4 @@ export interface TransactionWriteRepository {
 }
 
 export * from "./postgres.js";
+export * from "./pg-client.js";
