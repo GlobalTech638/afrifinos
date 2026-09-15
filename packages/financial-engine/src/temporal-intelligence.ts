@@ -138,7 +138,7 @@ export function detectSpendingAnomalies(
   currency: CurrencyCode,
 ): readonly TransactionAnomaly[] {
   const expenses = transactions.filter(
-    (transaction) => transaction.currency === currency && transaction.type === "expense",
+    (transaction) => transaction.total.currency === currency && transaction.type === "expense",
   );
   const groups = new Map<string, Transaction[]>();
 
