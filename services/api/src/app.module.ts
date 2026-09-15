@@ -1,4 +1,5 @@
 import { Module, Provider } from "@nestjs/common";
+import { APP_GUARD } from "@nestjs/core";
 import { PostgresFinancialRepository } from "@afrifinos/financial-persistence";
 import { createPostgresClient } from "@afrifinos/financial-persistence";
 import { HealthController } from "./health.controller.js";
@@ -7,6 +8,7 @@ import { TransactionsController } from "./transactions.controller.js";
 import { FinancialController } from "./financial.controller.js";
 import { ImportsController } from "./imports.controller.js";
 import { ApiFinancialService } from "./api-financial.service.js";
+import { JwtAuthGuard } from "./auth-context.js";
 
 export const FINANCIAL_REPOSITORY = Symbol("FINANCIAL_REPOSITORY");
 export const POSTGRES_CLIENT = Symbol("POSTGRES_CLIENT");
@@ -31,6 +33,14 @@ const repositoryProvider: Provider = {
     FinancialController,
     ImportsController,
   ],
-  providers: [postgresClientProvider, repositoryProvider, ApiFinancialService],
+  providers: [
+    postgresClientProvider,
+    repositoryProvider,
+    ApiFinancialService,
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+  ],
 })
 export class AppModule {}
