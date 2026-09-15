@@ -14,6 +14,7 @@ const recurring: readonly RecurringTransaction[] = [
     averageIntervalDays: 30,
     cadence: "monthly",
     confidence: 0.95,
+    lastObservedAt: "2026-08-25T00:00:00Z",
   },
   {
     key: "expense:rent:KES",
@@ -26,6 +27,7 @@ const recurring: readonly RecurringTransaction[] = [
     averageIntervalDays: 30,
     cadence: "monthly",
     confidence: 0.95,
+    lastObservedAt: "2026-08-25T00:00:00Z",
   },
 ];
 
@@ -50,6 +52,21 @@ describe("forecastCashFlow", () => {
     expect(forecast.points[29]?.projectedBalanceMinor).toBe(120000n);
   });
 
+  it("schedules the next recurring occurrence relative to the last observed transaction", () => {
+    const forecast = forecastCashFlow({
+      currency: "KES",
+      startingBalanceMinor: 0n,
+      averageMonthlyIncomeMinor: 0n,
+      averageMonthlyExpenseMinor: 0n,
+      recurring: [recurring[0]!],
+      asOf: "2026-09-01T00:00:00Z",
+      horizonDays: 30,
+    });
+
+    expect(forecast.points[23]?.projectedIncomeMinor).toBe(100000n);
+    expect(forecast.points[29]?.projectedIncomeMinor).toBe(0n);
+  });
+
   it("keeps the historical baseline separate from recurring events", () => {
     const forecast = forecastCashFlow({
       currency: "KES",
@@ -64,6 +81,19 @@ describe("forecastCashFlow", () => {
     expect(forecast.projectedIncomeMinor).toBe(190000n);
     expect(forecast.projectedExpenseMinor).toBe(90000n);
     expect(forecast.endingBalanceMinor).toBe(150000n);
+  });
+
+  it("preserves exact monthly baseline totals without floating-point rounding drift", () => {
+    const forecast = forecastCashFlow({
+      currency: "KES",
+      startingBalanceMinor: 0n,
+      averageMonthlyIncomeMinor: 100n,
+      averageMonthlyExpenseMinor: 0n,
+      asOf: "2026-09-01T00:00:00Z",
+      horizonDays: 90,
+    });
+
+    expect(forecast.projectedIncomeMinor).toBe(300n);
   });
 
   it("reports the first day on which cash is exhausted", () => {
