@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Inject, Post } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { parseTransactionCsv } from "@afrifinos/financial-ingestion";
-import { ingestTransaction } from "@afrifinos/financial-application";
+import { ingestTransactionBatch } from "@afrifinos/financial-application";
 import type { FinancialRepository, TransactionWriteRepository } from "@afrifinos/financial-persistence";
 import { FINANCIAL_REPOSITORY } from "./app.module.js";
 import { OwnerId } from "./auth-context.js";
@@ -25,37 +25,35 @@ export class ImportsController {
     if (!body.primaryAccountId?.trim() || !body.counterAccountId?.trim()) {
       throw new BadRequestException("primaryAccountId and counterAccountId are required");
     }
-
-    const parsed = parseTransactionCsv(body.csv);
-    const persisted: string[] = [];
-    const failures: Array<{ row: number; message: string }> = [];
-
-    for (const [index, row] of parsed.rows.entries()) {
-      try {
-        const result = await ingestTransaction(this.repository, {
-          ownerId,
-          primaryAccountId: body.primaryAccountId,
-          counterAccountId: body.counterAccountId,
-          input: row,
-          sourceKind: "csv",
-          providerId: body.providerId,
-          transactionId: randomUUID(),
-        });
-        persisted.push(result.transaction.transactionId);
-      } catch (error) {
-        failures.push({
-          row: index + 2,
-          message: error instanceof Error ? error.message : "Failed to persist row",
-        });
-      }
+    if (body.providerId !== undefined && !body.providerId.trim()) {
+      throw new BadRequestException("providerId cannot be empty");
     }
 
-    return {
-      importedCount: persisted.length,
-      rejectedCount: parsed.errors.length + failures.length,
-      parseErrors: parsed.errors,
-      persistenceErrors: failures,
-      transactionIds: persisted,
-    };
+    const parsed = parseTransactionCsv(body.csv);
+    const failures: Array<{ row: number; message: string }> = [];
+    const validRows = parsed.rows;
+
+    try {
+      const result = await ingestTransactionBatch(this.repository, {
+        ownerId,
+        primaryAccountId: body.primaryAccountId,
+        counterAccountId: body.counterAccountId,
+        inputs: validRows,
+        sourceKind: "csv",
+        providerId: body.providerId,
+        transactionIdFor: () => randomUUID(),
+      });
+
+      return {
+        importedCount: result.persisted.filter((item) => item.persistence === "inserted").length,
+        duplicateCount: result.persisted.filter((item) => item.persistence === "duplicate").length + result.duplicates.length,
+        rejectedCount: parsed.errors.length + failures.length,
+        parseErrors: parsed.errors,
+        persistenceErrors: failures,
+        transactionIds: result.persisted.map((item) => item.transaction.transactionId),
+      };
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : "CSV import failed");
+    }
   }
 }
