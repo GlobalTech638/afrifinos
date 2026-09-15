@@ -15,6 +15,13 @@ try {
 }
 
 const app = await NestFactory.create(AppModule);
+const webOrigin = process.env.WEB_ORIGIN?.trim();
+if (webOrigin) {
+  app.enableCors({
+    origin: webOrigin,
+    credentials: true,
+  });
+}
 app.useGlobalInterceptors(new BigIntInterceptor());
 app.enableShutdownHooks();
 await app.listen(port);
