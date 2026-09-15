@@ -34,6 +34,12 @@ export interface TemporalIntelligence {
   readonly anomalies: readonly TransactionAnomaly[];
 }
 
+export interface MonthlyForecastBaseline {
+  readonly monthsObserved: number;
+  readonly averageMonthlyIncomeMinor: bigint;
+  readonly averageMonthlyExpenseMinor: bigint;
+}
+
 function periodKey(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) throw new Error(`Invalid transaction date: ${value}`);
@@ -48,8 +54,7 @@ function normalizedKey(transaction: Transaction): string {
 }
 
 function effectiveAmount(transaction: Transaction): bigint {
-  if (transaction.total.amountMinor < 0n) return -transaction.total.amountMinor;
-  return transaction.total.amountMinor;
+  return transaction.total.amountMinor < 0n ? -transaction.total.amountMinor : transaction.total.amountMinor;
 }
 
 export function calculatePeriodCashFlow(
@@ -85,6 +90,28 @@ export function calculatePeriodCashFlow(
   }
 
   return [...buckets.values()].sort((a, b) => a.period.localeCompare(b.period));
+}
+
+export function calculateMonthlyForecastBaseline(
+  periods: readonly PeriodCashFlow[],
+): MonthlyForecastBaseline {
+  if (periods.length === 0) {
+    return {
+      monthsObserved: 0,
+      averageMonthlyIncomeMinor: 0n,
+      averageMonthlyExpenseMinor: 0n,
+    };
+  }
+
+  const totalIncome = periods.reduce((sum, period) => sum + period.incomeMinor, 0n);
+  const totalExpense = periods.reduce((sum, period) => sum + period.expenseMinor, 0n);
+  const divisor = BigInt(periods.length);
+
+  return {
+    monthsObserved: periods.length,
+    averageMonthlyIncomeMinor: totalIncome / divisor,
+    averageMonthlyExpenseMinor: totalExpense / divisor,
+  };
 }
 
 export function detectRecurringTransactions(
