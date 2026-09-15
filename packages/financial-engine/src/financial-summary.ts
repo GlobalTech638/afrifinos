@@ -1,7 +1,7 @@
-import type { Account, Asset, LedgerEntry, Liability, Money, SavingsGoal, Transaction } from "@afrifinos/financial-domain";
+import type { Account, Asset, LedgerEntry, Liability, Money, Obligation, SavingsGoal, Transaction } from "@afrifinos/financial-domain";
 import { calculateAccountBalances, calculateNetWorth, type AccountBalance, type NetWorth } from "./balances.js";
 import { calculateFinancialHealthScore, type FinancialHealthScore, type HealthScoreInputs } from "./health-score.js";
-import { calculateCashFlow, calculateDebtMetrics, calculateSavingsMetrics, type CashFlowSummary, type DebtMetrics, type SavingsMetrics } from "./metrics.js";
+import { calculateCashFlow, calculateDebtMetrics, calculateMonthlyDebtService, calculateSavingsMetrics, type CashFlowSummary, type DebtMetrics, type SavingsMetrics } from "./metrics.js";
 import { calculateEmergencyRunway, calculateGoalProgress, calculateSpendingVolatility } from "./resilience.js";
 
 export interface FinancialSummaryInput {
@@ -10,6 +10,7 @@ export interface FinancialSummaryInput {
   readonly transactions: readonly Transaction[];
   readonly assets?: readonly Asset[];
   readonly liabilities?: readonly Liability[];
+  readonly obligations?: readonly Obligation[];
   readonly goals?: readonly SavingsGoal[];
   readonly openingBalances?: ReadonlyMap<string, bigint | number | string>;
   readonly currency: Money["currency"];
@@ -34,18 +35,12 @@ export interface FinancialSummary {
 }
 
 function assertCurrency(value: Money, currency: Money["currency"]): void {
-  if (value.currency !== currency) {
-    throw new Error(`Currency mismatch: expected ${currency}, received ${value.currency}`);
-  }
+  if (value.currency !== currency) throw new Error(`Currency mismatch: expected ${currency}, received ${value.currency}`);
 }
 
 export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSummary {
   const accountBalances = calculateAccountBalances(input.accounts, input.entries, input.openingBalances);
-  const liquidAccountIds = new Set(
-    input.accounts
-      .filter((account) => account.type === "mobile_money" || account.type === "bank" || account.type === "cash")
-      .map((account) => account.accountId),
-  );
+  const liquidAccountIds = new Set(input.accounts.filter((account) => account.type === "mobile_money" || account.type === "bank" || account.type === "cash").map((account) => account.accountId));
   const liquidBalanceMinor = accountBalances.filter((balance) => liquidAccountIds.has(balance.accountId)).reduce((total, balance) => {
     if (balance.currency !== input.currency) throw new Error(`Currency mismatch: expected ${input.currency}, received ${balance.currency}`);
     return total + balance.balanceMinor;
@@ -55,7 +50,19 @@ export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSu
   const expenseTransactionIds = new Set(input.transactions.filter((transaction) => transaction.type === "expense" || transaction.type === "fee").map((transaction) => transaction.transactionId));
   const cashFlow = calculateCashFlow(input.entries, incomeTransactionIds, expenseTransactionIds);
   const savings = calculateSavingsMetrics(cashFlow.incomeMinor, cashFlow.expenseMinor);
-  const debt = calculateDebtMetrics(cashFlow.incomeMinor, input.debtServiceMinor ?? 0n);
+
+  const debtServiceMinor = input.debtServiceMinor ?? calculateMonthlyDebtService(
+    (input.obligations ?? [])
+      .filter((obligation) => obligation.status === "active" && obligation.recurring)
+      .map((obligation) => ({
+        amountMinor: absolute(obligation.amount.amountMinor),
+        currency: obligation.amount.currency,
+        cadence: obligation.recurrence ?? "monthly",
+        active: true,
+      })),
+    input.currency,
+  );
+  const debt = calculateDebtMetrics(cashFlow.incomeMinor, debtServiceMinor);
 
   const assets = [...(input.assets ?? [])].map((asset) => { assertCurrency(asset.value, input.currency); return asset.value; });
   const liabilities = [...(input.liabilities ?? [])].map((liability) => { assertCurrency(liability.outstanding, input.currency); return liability.outstanding; });
@@ -65,11 +72,7 @@ export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSu
   const averageMonthlyExpenseMinor = calculateAverageMonthlyExpense(input.transactions, input.currency);
   const emergencyRunway = calculateEmergencyRunway(liquidBalanceMinor, averageMonthlyExpenseMinor);
   const goalProgress = calculateGoalProgress(input.goals ?? []);
-  const resilience = {
-    emergencyRunwayMonths: emergencyRunway.months,
-    spendingVolatility: spendingVolatility.normalizedVolatility,
-    goalProgress: goalProgress.weightedProgress,
-  };
+  const resilience = { emergencyRunwayMonths: emergencyRunway.months, spendingVolatility: spendingVolatility.normalizedVolatility, goalProgress: goalProgress.weightedProgress };
   const healthInputs: HealthScoreInputs = {
     savingsRate: savings.savingsRate,
     debtBurdenRatio: debt.debtBurdenRatio,
@@ -85,11 +88,15 @@ function calculateAverageMonthlyExpense(transactions: readonly Transaction[], cu
   const periods = new Set<string>();
   let total = 0n;
   for (const transaction of transactions) {
-    if (transaction.currency !== currency || transaction.type !== "expense") continue;
+    if (transaction.currency !== currency || (transaction.type !== "expense" && transaction.type !== "fee")) continue;
     const date = new Date(transaction.occurredAt);
     if (Number.isNaN(date.getTime())) continue;
     periods.add(date.toISOString().slice(0, 7));
-    total += transaction.total.amountMinor < 0n ? -transaction.total.amountMinor : transaction.total.amountMinor;
+    total += absolute(transaction.total.amountMinor);
   }
   return periods.size > 0 ? total / BigInt(periods.size) : 0n;
+}
+
+function absolute(value: bigint): bigint {
+  return value < 0n ? -value : value;
 }
