@@ -35,6 +35,8 @@ export class ApiFinancialService {
       const entries = await this.repository.getLedgerEntries(accountIds);
       const assets = await this.repository.getAssets(ownerId);
       const liabilities = await this.repository.getLiabilities(ownerId);
+      const obligations = await this.repository.getObligations(ownerId);
+      const goals = await this.repository.getSavingsGoals(ownerId);
 
       const summary = buildFinancialSummary({
         accounts,
@@ -42,6 +44,7 @@ export class ApiFinancialService {
         transactions,
         assets,
         liabilities,
+        goals,
         currency,
       });
 
@@ -53,6 +56,7 @@ export class ApiFinancialService {
         averageMonthlyIncomeMinor: baseline.averageMonthlyIncomeMinor,
         averageMonthlyExpenseMinor: baseline.averageMonthlyExpenseMinor,
         recurring: temporal.recurring,
+        obligations,
       });
 
       const provisional = createFinancialIntelligenceSnapshot({
