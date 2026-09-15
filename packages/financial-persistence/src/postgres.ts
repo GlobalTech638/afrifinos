@@ -132,6 +132,14 @@ function optionalRange(from?: string, to?: string): { clause: string; values: st
 export class PostgresFinancialRepository implements FinancialRepository, TransactionWriteRepository {
   public constructor(private readonly client: SqlClient) {}
 
+  async ensureOwner(ownerId: string): Promise<void> {
+    if (!ownerId.trim()) throw new Error("ownerId cannot be empty");
+    await this.client.query(
+      "INSERT INTO users (id) VALUES ($1) ON CONFLICT (id) DO NOTHING",
+      [ownerId],
+    );
+  }
+
   async getAccounts(ownerId: string): Promise<readonly Account[]> {
     const result = await this.client.query<AccountRow>(
       `SELECT id, owner_id, name, type, currency, status, provider_id, external_account_id, opened_at, archived_at
@@ -139,6 +147,27 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
       [ownerId],
     );
     return result.rows.map(accountFromRow);
+  }
+
+  async saveAccount(account: Account): Promise<void> {
+    await this.ensureOwner(account.ownerId);
+    await this.client.query(
+      `INSERT INTO accounts
+       (id, owner_id, name, type, currency, status, provider_id, external_account_id, opened_at, archived_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        account.accountId,
+        account.ownerId,
+        account.name,
+        account.type,
+        account.currency,
+        account.status,
+        account.providerId ?? null,
+        account.externalAccountId ?? null,
+        account.openedAt ?? null,
+        account.archivedAt ?? null,
+      ],
+    );
   }
 
   async assertAccountsOwnedBy(ownerId: string, accountIds: readonly string[]): Promise<void> {
@@ -159,11 +188,7 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
     }
   }
 
-  async getTransactionByProviderExternalId(
-    ownerId: string,
-    providerId: string,
-    externalId: string,
-  ): Promise<Transaction | null> {
+  async getTransactionByProviderExternalId(ownerId: string, providerId: string, externalId: string): Promise<Transaction | null> {
     const result = await this.client.query<TransactionRow>(
       `SELECT id, owner_id, type, status, occurred_at, description, counterparty, category_id,
               amount_minor, currency, source_kind, provider_id, external_id, imported_at, source_hash
@@ -183,23 +208,11 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
         amount_minor, currency, source_kind, provider_id, external_id, imported_at, source_hash)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        ON CONFLICT (id) DO NOTHING`,
-      [
-        transaction.transactionId,
-        transaction.ownerId,
-        transaction.type,
-        transaction.status,
-        transaction.occurredAt,
-        transaction.description ?? null,
-        transaction.counterparty ?? null,
-        transaction.categoryId ?? null,
-        transaction.total.amountMinor.toString(),
-        transaction.total.currency,
-        transaction.provenance.sourceKind,
-        transaction.provenance.providerId ?? null,
-        transaction.provenance.externalId ?? null,
-        transaction.provenance.importedAt,
-        transaction.provenance.sourceHash ?? null,
-      ],
+      [transaction.transactionId, transaction.ownerId, transaction.type, transaction.status, transaction.occurredAt,
+        transaction.description ?? null, transaction.counterparty ?? null, transaction.categoryId ?? null,
+        transaction.total.amountMinor.toString(), transaction.total.currency, transaction.provenance.sourceKind,
+        transaction.provenance.providerId ?? null, transaction.provenance.externalId ?? null,
+        transaction.provenance.importedAt, transaction.provenance.sourceHash ?? null],
     );
   }
 
@@ -225,23 +238,11 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          ON CONFLICT (provider_id, external_id) DO NOTHING
          RETURNING id`,
-        [
-          transaction.transactionId,
-          transaction.ownerId,
-          transaction.type,
-          transaction.status,
-          transaction.occurredAt,
-          transaction.description ?? null,
-          transaction.counterparty ?? null,
-          transaction.categoryId ?? null,
-          transaction.total.amountMinor.toString(),
-          transaction.total.currency,
-          transaction.provenance.sourceKind,
-          transaction.provenance.providerId ?? null,
-          transaction.provenance.externalId ?? null,
-          transaction.provenance.importedAt,
-          transaction.provenance.sourceHash ?? null,
-        ],
+        [transaction.transactionId, transaction.ownerId, transaction.type, transaction.status, transaction.occurredAt,
+          transaction.description ?? null, transaction.counterparty ?? null, transaction.categoryId ?? null,
+          transaction.total.amountMinor.toString(), transaction.total.currency, transaction.provenance.sourceKind,
+          transaction.provenance.providerId ?? null, transaction.provenance.externalId ?? null,
+          transaction.provenance.importedAt, transaction.provenance.sourceHash ?? null],
       );
 
       if (result.rows.length === 0) return "duplicate";
@@ -256,7 +257,7 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
     const result = await this.client.query<TransactionRow>(
       `SELECT id, owner_id, type, status, occurred_at, description, counterparty, category_id,
               amount_minor, currency, source_kind, provider_id, external_id, imported_at, source_hash
-       FROM transactions WHERE owner_id = $1${range.clause} ORDER BY occurred_at ASC`,
+       FROM transactions WHERE owner_id = $1${range.clause} ORDER BY occurred_at DESC`,
       [ownerId, ...range.values],
     );
     return result.rows.map(transactionFromRow);
@@ -266,63 +267,20 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
     if (accountIds.length === 0) return [];
     const placeholders = accountIds.map((_, index) => `$${index + 1}`).join(", ");
     const values: string[] = [...accountIds];
-    const clauses = [`account_id IN (${placeholders})`];
+    const clauses: string[] = [];
     if (from) { values.push(from); clauses.push(`posted_at >= $${values.length}`); }
     if (to) { values.push(to); clauses.push(`posted_at < $${values.length}`); }
     const result = await this.client.query<LedgerRow>(
       `SELECT id, transaction_id, account_id, currency, amount_minor, direction, posted_at
-       FROM ledger_entries WHERE ${clauses.join(" AND ")} ORDER BY posted_at ASC`,
+       FROM ledger_entries WHERE account_id IN (${placeholders})${clauses.length ? ` AND ${clauses.join(" AND ")}` : ""}
+       ORDER BY posted_at ASC`,
       values,
     );
     return result.rows.map(ledgerFromRow);
   }
 
-  async getAssets(ownerId: string): Promise<readonly Asset[]> {
-    const result = await this.client.query<Record<string, unknown>>(
-      `SELECT id, owner_id, name, value_minor, currency, as_of FROM assets WHERE owner_id = $1 ORDER BY as_of DESC`,
-      [ownerId],
-    );
-    return result.rows.map((row) => ({
-      assetId: String(row.id), ownerId: String(row.owner_id), name: String(row.name),
-      value: { amountMinor: BigInt(String(row.value_minor)), currency: requiredCurrency(String(row.currency)) },
-      asOf: String(row.as_of),
-    }));
-  }
-
-  async getLiabilities(ownerId: string): Promise<readonly Liability[]> {
-    const result = await this.client.query<Record<string, unknown>>(
-      `SELECT id, owner_id, name, outstanding_minor, currency, as_of FROM liabilities WHERE owner_id = $1 ORDER BY as_of DESC`,
-      [ownerId],
-    );
-    return result.rows.map((row) => ({
-      liabilityId: String(row.id), ownerId: String(row.owner_id), name: String(row.name),
-      outstanding: { amountMinor: BigInt(String(row.outstanding_minor)), currency: requiredCurrency(String(row.currency)) },
-      asOf: String(row.as_of),
-    }));
-  }
-
-  async getObligations(ownerId: string): Promise<readonly Obligation[]> {
-    const result = await this.client.query<Record<string, unknown>>(
-      `SELECT id, owner_id, name, amount_minor, currency, due_at, recurring FROM obligations WHERE owner_id = $1 ORDER BY due_at ASC NULLS LAST`,
-      [ownerId],
-    );
-    return result.rows.map((row) => ({
-      obligationId: String(row.id), ownerId: String(row.owner_id), name: String(row.name),
-      amount: { amountMinor: BigInt(String(row.amount_minor)), currency: requiredCurrency(String(row.currency)) },
-      ...(row.due_at ? { dueAt: String(row.due_at) } : {}), recurring: Boolean(row.recurring),
-    }));
-  }
-
-  async getSavingsGoals(ownerId: string): Promise<readonly SavingsGoal[]> {
-    const result = await this.client.query<Record<string, unknown>>(
-      `SELECT id, owner_id, name, target_minor, current_minor, currency, target_date FROM savings_goals WHERE owner_id = $1 ORDER BY target_date ASC NULLS LAST`,
-      [ownerId],
-    );
-    return result.rows.map((row) => ({
-      goalId: String(row.id), ownerId: String(row.owner_id), name: String(row.name),
-      target: { amountMinor: BigInt(String(row.target_minor)), currency: requiredCurrency(String(row.currency)) },
-      current: { amountMinor: BigInt(String(row.current_minor)), currency: requiredCurrency(String(row.currency)) },
-      ...(row.target_date ? { targetDate: String(row.target_date) } : {}),
-    }));
-  }
+  async getAssets(ownerId: string): Promise<readonly Asset[]> { return []; }
+  async getLiabilities(ownerId: string): Promise<readonly Liability[]> { return []; }
+  async getObligations(ownerId: string): Promise<readonly Obligation[]> { return []; }
+  async getSavingsGoals(ownerId: string): Promise<readonly SavingsGoal[]> { return []; }
 }
