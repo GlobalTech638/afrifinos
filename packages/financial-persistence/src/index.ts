@@ -26,3 +26,5 @@ export interface TransactionWriteRepository {
     entries: readonly LedgerEntry[],
   ): Promise<void>;
 }
+
+export * from "./postgres.js";
