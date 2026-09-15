@@ -12,6 +12,11 @@ export interface FinancialRepository {
   getAccounts(ownerId: string): Promise<readonly Account[]>;
   saveTransaction(transaction: Transaction): Promise<void>;
   saveLedgerEntries(entries: readonly LedgerEntry[]): Promise<void>;
+  getTransactionByProviderExternalId(
+    ownerId: string,
+    providerId: string,
+    externalId: string,
+  ): Promise<Transaction | null>;
   getTransactions(ownerId: string, from?: string, to?: string): Promise<readonly Transaction[]>;
   getLedgerEntries(accountIds: readonly string[], from?: string, to?: string): Promise<readonly LedgerEntry[]>;
   getAssets(ownerId: string): Promise<readonly Asset[]>;
