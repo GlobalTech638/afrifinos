@@ -9,14 +9,12 @@ import type {
 } from "@afrifinos/financial-domain";
 
 export interface FinancialRepository {
+  ensureOwner(ownerId: string): Promise<void>;
   getAccounts(ownerId: string): Promise<readonly Account[]>;
+  saveAccount(account: Account): Promise<void>;
   saveTransaction(transaction: Transaction): Promise<void>;
   saveLedgerEntries(entries: readonly LedgerEntry[]): Promise<void>;
-  getTransactionByProviderExternalId(
-    ownerId: string,
-    providerId: string,
-    externalId: string,
-  ): Promise<Transaction | null>;
+  getTransactionByProviderExternalId(ownerId: string, providerId: string, externalId: string): Promise<Transaction | null>;
   getTransactions(ownerId: string, from?: string, to?: string): Promise<readonly Transaction[]>;
   getLedgerEntries(accountIds: readonly string[], from?: string, to?: string): Promise<readonly LedgerEntry[]>;
   getAssets(ownerId: string): Promise<readonly Asset[]>;
@@ -29,15 +27,8 @@ export type TransactionWriteResult = "inserted" | "duplicate";
 
 export interface TransactionWriteRepository {
   assertAccountsOwnedBy(ownerId: string, accountIds: readonly string[]): Promise<void>;
-  getTransactionByProviderExternalId(
-    ownerId: string,
-    providerId: string,
-    externalId: string,
-  ): Promise<Transaction | null>;
-  saveTransactionWithLedger(
-    transaction: Transaction,
-    entries: readonly LedgerEntry[],
-  ): Promise<TransactionWriteResult>;
+  getTransactionByProviderExternalId(ownerId: string, providerId: string, externalId: string): Promise<Transaction | null>;
+  saveTransactionWithLedger(transaction: Transaction, entries: readonly LedgerEntry[]): Promise<TransactionWriteResult>;
 }
 
 export * from "./postgres.js";
