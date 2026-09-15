@@ -20,12 +20,14 @@ export interface FinancialRepository {
   getSavingsGoals(ownerId: string): Promise<readonly SavingsGoal[]>;
 }
 
+export type TransactionWriteResult = "inserted" | "duplicate";
+
 export interface TransactionWriteRepository {
   assertAccountsOwnedBy(ownerId: string, accountIds: readonly string[]): Promise<void>;
   saveTransactionWithLedger(
     transaction: Transaction,
     entries: readonly LedgerEntry[],
-  ): Promise<void>;
+  ): Promise<TransactionWriteResult>;
 }
 
 export * from "./postgres.js";
