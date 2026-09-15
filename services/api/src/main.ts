@@ -6,9 +6,13 @@ import { BigIntInterceptor } from "./bigint.interceptor.js";
 import { migrateDatabase } from "./migrations.js";
 
 const port = Number(process.env.PORT ?? 3000);
-const postgresClient = createPostgresClient();
+const migrationClient = createPostgresClient();
 
-await migrateDatabase(postgresClient);
+try {
+  await migrateDatabase(migrationClient);
+} finally {
+  await migrationClient.close();
+}
 
 const app = await NestFactory.create(AppModule);
 app.useGlobalInterceptors(new BigIntInterceptor());
