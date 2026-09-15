@@ -7,7 +7,7 @@ import type {
   SavingsGoal,
   Transaction,
 } from "@afrifinos/financial-domain";
-import type { FinancialRepository, TransactionWriteRepository } from "./index.js";
+import type { FinancialRepository, TransactionWriteRepository, TransactionWriteResult } from "./index.js";
 
 export interface SqlQueryResult<Row extends Record<string, unknown> = Record<string, unknown>> {
   readonly rows: readonly Row[];
@@ -198,10 +198,39 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
     }
   }
 
-  async saveTransactionWithLedger(transaction: Transaction, entries: readonly LedgerEntry[]): Promise<void> {
-    await this.client.transaction(async (tx) => {
-      await new PostgresFinancialRepository(tx).saveTransaction(transaction);
-      await new PostgresFinancialRepository(tx).saveLedgerEntries(entries);
+  async saveTransactionWithLedger(transaction: Transaction, entries: readonly LedgerEntry[]): Promise<TransactionWriteResult> {
+    return this.client.transaction(async (tx) => {
+      const repository = new PostgresFinancialRepository(tx);
+      const result = await tx.query<{ id: string }>(
+        `INSERT INTO transactions
+         (id, owner_id, type, status, occurred_at, description, counterparty, category_id,
+          amount_minor, currency, source_kind, provider_id, external_id, imported_at, source_hash)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         ON CONFLICT (provider_id, external_id) DO NOTHING
+         RETURNING id`,
+        [
+          transaction.transactionId,
+          transaction.ownerId,
+          transaction.type,
+          transaction.status,
+          transaction.occurredAt,
+          transaction.description ?? null,
+          transaction.counterparty ?? null,
+          transaction.categoryId ?? null,
+          transaction.total.amountMinor.toString(),
+          transaction.total.currency,
+          transaction.provenance.sourceKind,
+          transaction.provenance.providerId ?? null,
+          transaction.provenance.externalId ?? null,
+          transaction.provenance.importedAt,
+          transaction.provenance.sourceHash ?? null,
+        ],
+      );
+
+      if (result.rows.length === 0) return "duplicate";
+
+      await repository.saveLedgerEntries(entries);
+      return "inserted";
     });
   }
 
