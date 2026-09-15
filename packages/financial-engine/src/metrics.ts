@@ -19,14 +19,16 @@ export interface SavingsMetrics {
   readonly savingsRate: number | null;
 }
 
-/**
- * Converts a bigint ratio to a JavaScript number without first converting
- * either operand to Number. This avoids Infinity/precision loss for large
- * monetary values while preserving the ratio's useful decimal precision.
- */
+export interface DebtServiceSource {
+  readonly amountMinor: bigint;
+  readonly currency: string;
+  readonly cadence: "weekly" | "biweekly" | "monthly" | "quarterly" | "annual" | "once";
+  readonly active: boolean;
+}
+
+/** Converts bigint monetary values to a ratio without converting the raw values to Number first. */
 export function ratioOfBigInts(numerator: bigint, denominator: bigint): number {
   if (denominator === 0n) throw new Error("Cannot divide by zero");
-
   const sign = (numerator < 0n) === (denominator < 0n) ? 1 : -1;
   const numeratorDigits = absolute(numerator).toString();
   const denominatorDigits = absolute(denominator).toString();
@@ -35,71 +37,47 @@ export function ratioOfBigInts(numerator: bigint, denominator: bigint): number {
   const denominatorPrecision = Math.min(significantDigits, denominatorDigits.length);
   const numeratorSignificand = Number(numeratorDigits.slice(0, numeratorPrecision));
   const denominatorSignificand = Number(denominatorDigits.slice(0, denominatorPrecision));
-  const exponent =
-    numeratorDigits.length - numeratorPrecision -
-    (denominatorDigits.length - denominatorPrecision);
-
+  const exponent = numeratorDigits.length - numeratorPrecision - (denominatorDigits.length - denominatorPrecision);
   return sign * (numeratorSignificand / denominatorSignificand) * 10 ** exponent;
 }
 
-/**
- * Computes account-level cash movement from classified ledger entries.
- * The caller supplies the transaction IDs classified as income or expense.
- */
-export function calculateCashFlow(
-  entries: readonly LedgerEntry[],
-  incomeTransactionIds: ReadonlySet<string>,
-  expenseTransactionIds: ReadonlySet<string>,
-): CashFlowSummary {
+export function calculateCashFlow(entries: readonly LedgerEntry[], incomeTransactionIds: ReadonlySet<string>, expenseTransactionIds: ReadonlySet<string>): CashFlowSummary {
   let incomeMinor = 0n;
   let expenseMinor = 0n;
-
   for (const entry of entries) {
     const amount = signedAmount(entry);
-    if (incomeTransactionIds.has(entry.transactionId) && amount > 0n) {
-      incomeMinor += amount;
-    }
-    if (expenseTransactionIds.has(entry.transactionId) && amount < 0n) {
-      expenseMinor += -amount;
-    }
+    if (incomeTransactionIds.has(entry.transactionId) && amount > 0n) incomeMinor += amount;
+    if (expenseTransactionIds.has(entry.transactionId) && amount < 0n) expenseMinor += -amount;
   }
-
-  return {
-    incomeMinor,
-    expenseMinor,
-    netCashFlowMinor: incomeMinor - expenseMinor,
-  };
+  return { incomeMinor, expenseMinor, netCashFlowMinor: incomeMinor - expenseMinor };
 }
 
-export function calculateSavingsMetrics(
-  incomeMinor: bigint,
-  expenseMinor: bigint,
-): SavingsMetrics {
-  if (incomeMinor <= 0n) {
-    return { incomeMinor, savingsMinor: incomeMinor - expenseMinor, savingsRate: null };
-  }
-
+export function calculateSavingsMetrics(incomeMinor: bigint, expenseMinor: bigint): SavingsMetrics {
+  if (incomeMinor <= 0n) return { incomeMinor, savingsMinor: incomeMinor - expenseMinor, savingsRate: null };
   const savingsMinor = incomeMinor - expenseMinor;
-  return {
-    incomeMinor,
-    savingsMinor,
-    savingsRate: ratioOfBigInts(savingsMinor, incomeMinor),
-  };
+  return { incomeMinor, savingsMinor, savingsRate: ratioOfBigInts(savingsMinor, incomeMinor) };
 }
 
-export function calculateDebtMetrics(
-  incomeMinor: bigint,
-  debtServiceMinor: bigint,
-): DebtMetrics {
-  if (incomeMinor <= 0n) {
-    return { debtServiceMinor, incomeMinor, debtBurdenRatio: null };
-  }
+export function calculateDebtMetrics(incomeMinor: bigint, debtServiceMinor: bigint): DebtMetrics {
+  if (incomeMinor <= 0n) return { debtServiceMinor, incomeMinor, debtBurdenRatio: null };
+  return { debtServiceMinor, incomeMinor, debtBurdenRatio: ratioOfBigInts(debtServiceMinor, incomeMinor) };
+}
 
-  return {
-    debtServiceMinor,
-    incomeMinor,
-    debtBurdenRatio: ratioOfBigInts(debtServiceMinor, incomeMinor),
-  };
+/** Normalize recurring debt payments to a monthly debt-service amount. One-off obligations are excluded. */
+export function calculateMonthlyDebtService(sources: readonly DebtServiceSource[], currency: string): bigint {
+  let total = 0n;
+  for (const source of sources) {
+    if (!source.active || source.currency !== currency || source.amountMinor <= 0n) continue;
+    switch (source.cadence) {
+      case "weekly": total += source.amountMinor * 52n / 12n; break;
+      case "biweekly": total += source.amountMinor * 26n / 12n; break;
+      case "monthly": total += source.amountMinor; break;
+      case "quarterly": total += source.amountMinor / 3n; break;
+      case "annual": total += source.amountMinor / 12n; break;
+      case "once": break;
+    }
+  }
+  return total;
 }
 
 function absolute(value: bigint): bigint {
