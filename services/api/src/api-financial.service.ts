@@ -29,6 +29,7 @@ export class ApiFinancialService {
 
   private async buildSnapshot(ownerId: string, currency: CurrencyCode) {
     try {
+      const generatedAt = new Date().toISOString();
       const accounts = await this.repository.getAccounts(ownerId);
       const transactions = await this.repository.getTransactions(ownerId);
       const accountIds = accounts.map((account) => account.accountId);
@@ -50,6 +51,8 @@ export class ApiFinancialService {
 
       const temporal = buildTemporalIntelligence(transactions, currency);
       const baseline = calculateMonthlyForecastBaseline(temporal.periods);
+      // One month of observed average expenses is the initial deterministic safety buffer.
+      // A future policy layer can replace this with user-specific or risk-tiered buffers.
       const forecast = forecastCashFlow({
         currency,
         startingBalanceMinor: summary.liquidBalanceMinor,
@@ -57,12 +60,15 @@ export class ApiFinancialService {
         averageMonthlyExpenseMinor: baseline.averageMonthlyExpenseMinor,
         recurring: temporal.recurring,
         obligations,
+        safetyBufferMinor: baseline.averageMonthlyExpenseMinor,
+        asOf: generatedAt,
       });
 
       const provisional = createFinancialIntelligenceSnapshot({
         summary,
         temporal,
         forecast,
+        generatedAt,
       });
       const facts = deriveFinancialFacts(provisional);
 
@@ -71,7 +77,7 @@ export class ApiFinancialService {
         temporal,
         forecast,
         facts,
-        generatedAt: provisional.generatedAt,
+        generatedAt,
       });
     } catch (error) {
       throw new BadRequestException(
