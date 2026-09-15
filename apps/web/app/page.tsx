@@ -1,113 +1,82 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 const money = new Intl.NumberFormat("en-KE", {
   style: "currency",
   currency: "KES",
   maximumFractionDigits: 0,
 });
 
-const demo = {
-  balance: 184_500,
-  income: 126_000,
-  expenses: 82_400,
-  savingsRate: 34.6,
-  healthScore: 76,
-  healthLabel: "Stable",
-  forecast: 228_100,
-  runway: 47,
-  alerts: [
-    { title: "Large transport expense", detail: "KES 18,000 · 2.4σ above baseline", tone: "warning" },
-    { title: "Recurring payment detected", detail: "KES 7,500 every ~30 days", tone: "" },
-    { title: "Debt burden is elevated", detail: "32% of recorded income", tone: "warning" },
-  ],
-  recurring: [
-    ["Rent", 28_000, "Monthly"],
-    ["School fees", 15_000, "Monthly"],
-    ["Mobile / internet", 7_500, "Monthly"],
-  ],
+type Intelligence = {
+  currency: string;
+  summary: {
+    liquidBalanceMinor: string;
+    cashFlow: { incomeMinor: string; expenseMinor: string; netCashFlowMinor: string };
+    savings: { savingsRate: number | null };
+    debt: { debtBurdenRatio: number | null };
+    healthScore: { score: number; band: string };
+  };
+  forecast: { projectedEndingBalanceMinor: string; minimumProjectedBalanceMinor: string; runwayDays: number | null };
+  facts: { id: string; statement: string; severity?: string }[];
+  temporal: { recurring: { id: string; description: string; averageAmountMinor: string; cadence: string }[] };
 };
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+
 export default function HomePage() {
+  const [data, setData] = useState<Intelligence | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/financial/intelligence?currency=KES`, { credentials: "include" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Financial API returned ${response.status}`);
+        return response.json() as Promise<Intelligence>;
+      })
+      .then(setData)
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Unable to load financial intelligence"));
+  }, []);
+
+  if (error) return <State title="Unable to load your financial intelligence" detail={error} />;
+  if (!data) return <State title="Loading AfriFINOS" detail="Building your financial picture…" />;
+
+  const summary = data.summary;
+  const score = summary.healthScore.score;
+  const income = minor(summary.cashFlow.incomeMinor);
+  const expenses = minor(summary.cashFlow.expenseMinor);
+
   return (
     <main className="dashboard">
-      <header className="topbar">
-        <div className="brand">Afri<span>FINOS</span></div>
-        <small>Financial intelligence · KES</small>
-      </header>
-
+      <header className="topbar"><div className="brand">Afri<span>FINOS</span></div><small>Financial intelligence · {data.currency}</small></header>
       <section className="content">
-        <div className="hero">
-          <div>
-            <h1>Your financial operating system.</h1>
-            <p>One view of cash, spending, debt, savings and what is likely to happen next. Built for the way money actually moves across Africa.</p>
-          </div>
-          <div className="badge">● System healthy</div>
-        </div>
+        <div className="hero"><div><h1>Your financial operating system.</h1><p>One view of cash, spending, debt, savings and what is likely to happen next.</p></div><div className="badge">● Live intelligence</div></div>
 
         <div className="grid metrics">
-          <Metric label="Liquid balance" value={money.format(demo.balance)} note="Bank · M-Pesa · Cash" />
-          <Metric label="Income / month" value={money.format(demo.income)} note="Recorded average" />
-          <Metric label="Expenses / month" value={money.format(demo.expenses)} note="Recorded average" />
-          <Metric label="Savings rate" value={`${demo.savingsRate}%`} note="After recorded spending" />
+          <Metric label="Liquid balance" value={formatMinor(summary.liquidBalanceMinor)} note="Bank · M-Pesa · Cash" />
+          <Metric label="Income" value={formatMinor(summary.cashFlow.incomeMinor)} note="Recorded period" />
+          <Metric label="Expenses" value={formatMinor(summary.cashFlow.expenseMinor)} note="Recorded period" />
+          <Metric label="Savings rate" value={summary.savings.savingsRate === null ? "—" : `${(summary.savings.savingsRate * 100).toFixed(1)}%`} note="Income less recorded spending" />
         </div>
 
         <div className="grid two">
-          <section className="card">
-            <h2>Financial health</h2>
-            <div className="health">
-              <div className="score">{demo.healthScore}</div>
-              <div>
-                <div className="score-label">{demo.healthLabel}</div>
-                <div className="metric-note">Strong foundations, with room to improve resilience.</div>
-                <div className="progress"><div style={{ width: `${demo.healthScore}%` }} /></div>
-              </div>
-            </div>
-          </section>
-
-          <section className="card">
-            <h2>90-day outlook</h2>
-            <div className="forecast">
-              <div className="forecast-box"><small>Projected balance</small><strong>{money.format(demo.forecast)}</strong></div>
-              <div className="forecast-box"><small>Cash runway</small><strong>{demo.runway} days</strong></div>
-              <div className="forecast-box"><small>Direction</small><strong className="positive">Improving</strong></div>
-            </div>
-          </section>
+          <section className="card"><h2>Financial health</h2><div className="health"><div className="score">{score}</div><div><div className="score-label">{capitalize(summary.healthScore.band)}</div><div className="metric-note">Explainable score from cash flow, savings, debt and resilience.</div><div className="progress"><div style={{ width: `${Math.max(0, Math.min(100, score))}%` }} /></div></div></div></section>
+          <section className="card"><h2>90-day outlook</h2><div className="forecast"><div className="forecast-box"><small>Projected balance</small><strong>{formatMinor(data.forecast.projectedEndingBalanceMinor)}</strong></div><div className="forecast-box"><small>Minimum balance</small><strong>{formatMinor(data.forecast.minimumProjectedBalanceMinor)}</strong></div><div className="forecast-box"><small>Cash runway</small><strong>{data.forecast.runwayDays === null ? "Beyond horizon" : `${data.forecast.runwayDays} days`}</strong></div></div></section>
         </div>
 
         <div className="grid two">
-          <section className="card">
-            <h2>Financial signals</h2>
-            <div className="list">
-              {demo.alerts.map((alert) => (
-                <div className="item" key={alert.title}>
-                  <div><strong>{alert.title}</strong><small>{alert.detail}</small></div>
-                  <span className={alert.tone}>{alert.tone === "warning" ? "Review" : "Detected"}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="card">
-            <h2>Recurring commitments</h2>
-            <div className="list">
-              {demo.recurring.map(([name, amount, cadence]) => (
-                <div className="item" key={name as string}>
-                  <div><strong>{name}</strong><small>{cadence}</small></div>
-                  <span className="amount">{money.format(amount as number)}</span>
-                </div>
-              ))}
-            </div>
-          </section>
+          <section className="card"><h2>Financial signals</h2><div className="list">{data.facts.length === 0 ? <div className="empty">No material signals detected.</div> : data.facts.map((fact) => <div className="item" key={fact.id}><div><strong>{fact.statement}</strong><small>{fact.severity ?? "info"}</small></div><span className={fact.severity === "critical" ? "warning" : ""}>{fact.severity === "critical" ? "Review" : "Signal"}</span></div>)}</div></section>
+          <section className="card"><h2>Recurring commitments</h2><div className="list">{data.temporal.recurring.length === 0 ? <div className="empty">No recurring pattern detected yet.</div> : data.temporal.recurring.slice(0, 5).map((item) => <div className="item" key={item.id}><div><strong>{item.description}</strong><small>{item.cadence}</small></div><span className="amount">{formatMinor(item.averageAmountMinor)}</span></div>)}</div></section>
         </div>
+
+        <div className="card footnote">Net cash flow: <strong>{formatMinor(summary.cashFlow.netCashFlowMinor)}</strong> · Historical income {money.format(income)} · expenses {money.format(expenses)}</div>
       </section>
     </main>
   );
 }
 
-function Metric({ label, value, note }: { label: string; value: string; note: string }) {
-  return (
-    <section className="card">
-      <div className="metric-label">{label}</div>
-      <div className="metric-value">{value}</div>
-      <div className="metric-note">{note}</div>
-    </section>
-  );
-}
+function formatMinor(value: string): string { return money.format(Number(BigInt(value)) / 100); }
+function minor(value: string): number { return Number(BigInt(value)) / 100; }
+function capitalize(value: string): string { return value.charAt(0).toUpperCase() + value.slice(1); }
+function Metric({ label, value, note }: { label: string; value: string; note: string }) { return <section className="card"><div className="metric-label">{label}</div><div className="metric-value">{value}</div><div className="metric-note">{note}</div></section>; }
+function State({ title, detail }: { title: string; detail: string }) { return <main className="dashboard"><section className="content"><div className="card state"><h1>{title}</h1><p>{detail}</p></div></section></main>; }
