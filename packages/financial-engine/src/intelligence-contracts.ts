@@ -11,6 +11,7 @@ export type FinancialFactCategory =
   | "debt"
   | "net_worth"
   | "forecast"
+  | "liquidity"
   | "recurring"
   | "anomaly"
   | "health";
@@ -25,11 +26,6 @@ export interface FinancialFact {
   readonly evidence?: readonly string[];
 }
 
-/**
- * Provider-independent intelligence produced by deterministic financial code.
- * This is the intended input boundary for an AI analyst: no raw credentials,
- * provider tokens, or transaction import payloads are required here.
- */
 export interface FinancialIntelligenceSnapshot {
   readonly schemaVersion: typeof INTELLIGENCE_SCHEMA_VERSION;
   readonly currency: CurrencyCode;
