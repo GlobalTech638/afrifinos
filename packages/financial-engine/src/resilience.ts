@@ -33,17 +33,17 @@ export function calculateSpendingVolatility(
   const values = [...monthly.values()];
   if (values.length < 2) return { monthlyExpenseCoefficient: null, normalizedVolatility: null };
 
-  // Normalize each month against the exact bigint total so large monetary
-  // values do not silently lose precision before the coefficient is computed.
   const total = values.reduce((sum, value) => sum + value, 0n);
   if (total <= 0n) return { monthlyExpenseCoefficient: null, normalizedVolatility: null };
 
-  const mean = ratioOfBigInts(total, BigInt(values.length));
-  if (mean <= 0) return { monthlyExpenseCoefficient: null, normalizedVolatility: null };
+  // Compute the coefficient from ratios rather than converting raw minor-unit
+  // balances to Number. This keeps the metric stable for very large ledgers.
+  const count = BigInt(values.length);
+  const meanRatio = 1 / values.length;
+  const normalizedValues = values.map((value) => ratioOfBigInts(value, total) / meanRatio);
+  const variance = normalizedValues.reduce((sum, normalized) => sum + (normalized - 1) ** 2, 0) / values.length;
+  const coefficient = Math.sqrt(variance);
 
-  const deviations = values.map((value) => ratioOfBigInts(value, 1n) - mean);
-  const variance = deviations.reduce((sum, deviation) => sum + deviation ** 2, 0) / values.length;
-  const coefficient = Math.sqrt(variance) / mean;
   return {
     monthlyExpenseCoefficient: coefficient,
     normalizedVolatility: Math.min(1, coefficient),
