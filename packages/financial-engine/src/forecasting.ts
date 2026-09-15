@@ -1,4 +1,4 @@
-import type { CurrencyCode } from "@afrifinos/financial-domain";
+import type { CurrencyCode, Obligation } from "@afrifinos/financial-domain";
 import type { RecurringCadence, RecurringTransaction } from "./temporal-intelligence.js";
 
 export type ForecastHorizonDays = 30 | 60 | 90;
@@ -72,6 +72,34 @@ function recurringEvents(
   return events;
 }
 
+function obligationEvents(
+  obligations: readonly Obligation[],
+  horizonDays: number,
+  start: Date,
+  currency: CurrencyCode,
+): Map<number, bigint> {
+  const events = new Map<number, bigint>();
+  for (const obligation of obligations) {
+    if (obligation.status !== "active" || obligation.amount.currency !== currency || !obligation.dueAt) continue;
+    const dueAt = new Date(obligation.dueAt);
+    if (Number.isNaN(dueAt.getTime())) continue;
+
+    const interval = 30;
+    let day = Math.ceil((dueAt.getTime() - start.getTime()) / 86_400_000);
+    if (obligation.recurring) {
+      while (day < 1) day += interval;
+    }
+    if (day < 1) day = 1;
+
+    while (day <= horizonDays) {
+      events.set(day, (events.get(day) ?? 0n) + obligation.amount.amountMinor);
+      if (!obligation.recurring) break;
+      day += interval;
+    }
+  }
+  return events;
+}
+
 function distributeMonthlyAmount(amountMinor: bigint, days: number): bigint[] {
   if (days <= 0) return [];
   const result = Array<bigint>(days).fill(amountMinor / BigInt(days));
@@ -89,6 +117,7 @@ export function forecastCashFlow(input: {
   readonly averageMonthlyIncomeMinor: bigint | number | string;
   readonly averageMonthlyExpenseMinor: bigint | number | string;
   readonly recurring?: readonly RecurringTransaction[];
+  readonly obligations?: readonly Obligation[];
   readonly asOf?: string;
   readonly horizonDays?: ForecastHorizonDays;
 }): CashForecast {
@@ -107,6 +136,7 @@ export function forecastCashFlow(input: {
   const baselineExpense = distributeMonthlyAmount(averageMonthlyExpenseMinor, 30);
   const recurringIncome = recurringEvents(input.recurring ?? [], horizonDays, "income", start);
   const recurringExpense = recurringEvents(input.recurring ?? [], horizonDays, "expense", start);
+  const obligations = obligationEvents(input.obligations ?? [], horizonDays, start, input.currency);
   const points: ForecastPoint[] = [];
   let balance = startingBalanceMinor;
   let projectedIncomeMinor = 0n;
@@ -117,7 +147,7 @@ export function forecastCashFlow(input: {
   for (let day = 1; day <= horizonDays; day += 1) {
     const baselineDay = (day - 1) % 30;
     const income = (baselineIncome[baselineDay] ?? 0n) + (recurringIncome.get(day) ?? 0n);
-    const expense = (baselineExpense[baselineDay] ?? 0n) + (recurringExpense.get(day) ?? 0n);
+    const expense = (baselineExpense[baselineDay] ?? 0n) + (recurringExpense.get(day) ?? 0n) + (obligations.get(day) ?? 0n);
 
     balance += income - expense;
     projectedIncomeMinor += income;
