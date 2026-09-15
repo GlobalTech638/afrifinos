@@ -74,7 +74,32 @@ describe("temporal intelligence", () => {
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe("expense");
     expect(result[0].amountMinor).toBe(30000n);
-    expect(result[0].occurrenceCount).toBe(3);
+    expect(result[0].averageAmountMinor).toBe(30000n);
+    expect(result[0].cadence).toBe("monthly");
+    expect(result[0].description).toBe("Rent");
+  });
+
+  it("detects weekly recurring expenses", () => {
+    const transactions = [
+      transaction("w1", "2026-09-01T08:00:00Z", "expense", 5000n, "Internet", "utilities"),
+      transaction("w2", "2026-09-08T08:00:00Z", "expense", 5000n, "Internet", "utilities"),
+      transaction("w3", "2026-09-15T08:00:00Z", "expense", 5000n, "Internet", "utilities"),
+    ];
+
+    const result = detectRecurringTransactions(transactions, "KES");
+    expect(result).toHaveLength(1);
+    expect(result[0].cadence).toBe("weekly");
+    expect(result[0].averageIntervalDays).toBe(7);
+  });
+
+  it("rejects recurring candidates with unstable amounts", () => {
+    const transactions = [
+      transaction("u1", "2026-01-05T08:00:00Z", "expense", 10000n, "Subscription", "utilities"),
+      transaction("u2", "2026-02-05T08:00:00Z", "expense", 30000n, "Subscription", "utilities"),
+      transaction("u3", "2026-03-06T08:00:00Z", "expense", 10000n, "Subscription", "utilities"),
+    ];
+
+    expect(detectRecurringTransactions(transactions, "KES")).toHaveLength(0);
   });
 
   it("flags unusually large spending within a category", () => {
