@@ -7,6 +7,12 @@ class InMemoryWriteRepository implements TransactionWriteRepository {
   readonly transactions: Transaction[] = [];
   readonly entries: LedgerEntry[] = [];
 
+  async assertAccountsOwnedBy(ownerId: string, accountIds: readonly string[]): Promise<void> {
+    if (ownerId !== "user-1" || accountIds.some((accountId) => !["mpesa", "income"].includes(accountId))) {
+      throw new Error("One or more accounts do not belong to the authenticated owner");
+    }
+  }
+
   async saveTransactionWithLedger(transaction: Transaction, entries: readonly LedgerEntry[]): Promise<void> {
     this.transactions.push(transaction);
     this.entries.push(...entries);
