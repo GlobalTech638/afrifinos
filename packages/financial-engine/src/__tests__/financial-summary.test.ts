@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildFinancialSummary } from "../financial-summary.js";
-import type { Account, LedgerEntry, Transaction } from "@afrifinos/financial-domain";
+import type { Account, LedgerEntry, Obligation, Transaction } from "@afrifinos/financial-domain";
 
 const accounts: readonly Account[] = [
   { accountId: "mpesa", ownerId: "user-1", name: "M-Pesa", type: "mobile_money", currency: "KES", status: "active" },
@@ -46,9 +46,6 @@ describe("buildFinancialSummary", () => {
       currency: "KES",
       openingBalances: new Map([["mpesa", 50000n], ["bank", 200000n]]),
       debtServiceMinor: 10000n,
-      emergencyRunwayMonths: 4,
-      spendingVolatility: 0.2,
-      goalProgress: 0.5,
     });
 
     expect(summary.accountBalances.find((balance) => balance.accountId === "mpesa")?.balanceMinor).toBe(125000n);
@@ -59,6 +56,31 @@ describe("buildFinancialSummary", () => {
     expect(summary.savings.savingsRate).toBe(0.75);
     expect(summary.debt.debtBurdenRatio).toBe(0.1);
     expect(summary.healthScore.methodologyVersion).toBe("2026-09-v1");
+  });
+
+  it("counts only explicitly classified debt-service obligations", () => {
+    const obligations: readonly Obligation[] = [
+      { obligationId: "loan", ownerId: "user-1", name: "Loan repayment", amount: { amountMinor: 10000n, currency: "KES" }, status: "active", recurring: true, recurrence: "monthly", kind: "debt_service" },
+      { obligationId: "rent", ownerId: "user-1", name: "Rent", amount: { amountMinor: 30000n, currency: "KES" }, status: "active", recurring: true, recurrence: "monthly", kind: "rent" },
+      { obligationId: "subscription", ownerId: "user-1", name: "Subscription", amount: { amountMinor: 5000n, currency: "KES" }, status: "active", recurring: true, recurrence: "monthly", kind: "subscription" },
+      { obligationId: "settled-loan", ownerId: "user-1", name: "Settled loan", amount: { amountMinor: 90000n, currency: "KES" }, status: "settled", recurring: true, recurrence: "monthly", kind: "debt_service" },
+    ];
+
+    const summary = buildFinancialSummary({ accounts, entries, transactions, obligations, currency: "KES" });
+
+    expect(summary.debt.debtServiceMinor).toBe(10000n);
+    expect(summary.debt.debtBurdenRatio).toBe(0.1);
+  });
+
+  it("keeps legacy recurring obligations as debt service until reclassified", () => {
+    const obligations: readonly Obligation[] = [
+      { obligationId: "legacy", ownerId: "user-1", name: "Legacy repayment", amount: { amountMinor: 12000n, currency: "KES" }, status: "active", recurring: true, recurrence: "monthly" },
+      { obligationId: "other", ownerId: "user-1", name: "Other", amount: { amountMinor: 3000n, currency: "KES" }, status: "active", recurring: true, recurrence: "monthly", kind: "other" },
+    ];
+
+    const summary = buildFinancialSummary({ accounts, entries, transactions, obligations, currency: "KES" });
+
+    expect(summary.debt.debtServiceMinor).toBe(12000n);
   });
 
   it("rejects mixed currencies in assets", () => {
