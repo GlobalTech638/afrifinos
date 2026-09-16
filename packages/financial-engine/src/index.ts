@@ -10,6 +10,7 @@ export * from "./financial-summary.js";
 export * from "./temporal-intelligence.js";
 export * from "./resilience.js";
 export * from "./forecasting.js";
+export * from "./affordability.js";
 export * from "./debt-intelligence.js";
 export * from "./intelligence-contracts.js";
 export * from "./intelligence-dto.js";
