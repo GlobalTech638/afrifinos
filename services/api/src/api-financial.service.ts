@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type { CurrencyCode } from "@afrifinos/financial-domain";
 import type { FinancialRepository } from "@afrifinos/financial-persistence";
 import {
+  assessAffordability,
   buildFinancialSummary,
   buildTemporalIntelligence,
   calculateMonthlyForecastBaseline,
@@ -25,6 +26,21 @@ export class ApiFinancialService {
   async getIntelligence(ownerId: string, currency: CurrencyCode) {
     const snapshot = await this.buildSnapshot(ownerId, currency);
     return toFinancialIntelligenceDto(snapshot);
+  }
+
+  async getAffordability(
+    ownerId: string,
+    currency: CurrencyCode,
+    purchaseAmountMinor: bigint | number | string,
+    additionalRecurringMonthlyMinor: bigint | number | string = 0n,
+  ) {
+    const snapshot = await this.buildSnapshot(ownerId, currency);
+    return assessAffordability({
+      currency,
+      purchaseAmountMinor,
+      additionalRecurringMonthlyMinor,
+      forecast: snapshot.forecast,
+    });
   }
 
   private async buildSnapshot(ownerId: string, currency: CurrencyCode) {
