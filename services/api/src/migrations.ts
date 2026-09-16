@@ -8,6 +8,7 @@ const migrationFiles = [
   "003_idempotency_and_integrity.sql",
   "004_financial_domain_attributes.sql",
   "005_obligation_recurrence.sql",
+  "006_obligation_semantics.sql",
 ] as const;
 
 export async function loadApiMigrations(): Promise<readonly Migration[]> {
