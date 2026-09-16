@@ -53,7 +53,7 @@ export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSu
 
   const debtServiceMinor = input.debtServiceMinor ?? calculateMonthlyDebtService(
     (input.obligations ?? [])
-      .filter((obligation) => obligation.status === "active" && obligation.recurring)
+      .filter((obligation) => obligation.status === "active" && obligation.recurring && (obligation.kind ?? "debt_service") === "debt_service")
       .map((obligation) => ({
         amountMinor: absolute(obligation.amount.amountMinor),
         currency: obligation.amount.currency,
