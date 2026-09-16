@@ -45,6 +45,7 @@ export class ApiFinancialService {
         transactions,
         assets,
         liabilities,
+        obligations,
         goals,
         currency,
       });
