@@ -9,15 +9,6 @@ export interface FinancialTrend {
   readonly direction: "up" | "down" | "stable";
 }
 
-function ratio(change: bigint, baseline: bigint): number | null {
-  if (baseline === 0n) return null;
-  const sign = change < 0n ? -1 : 1;
-  const absChange = change < 0n ? -change : change;
-  const digits = absChange.toString();
-  const value = Number(digits.slice(0, 15)) / Number(baseline < 0n ? -baseline : baseline).toString().slice(0, 15);
-  return sign * value * 10 ** (digits.length - absChange.toString().length);
-}
-
 /**
  * Compares the latest complete observed month with the average of prior
  * observed months. At least three observed months are required so the
@@ -66,11 +57,11 @@ function trend(key: FinancialTrend["key"], currentMinor: bigint, baselineMinor: 
     currentMinor,
     baselineMinor,
     changeMinor,
-    changeRatio: baselineMinor === 0n ? null : Number(changeMinor) / Number(baselineMinor),
+    changeRatio: baselineMinor === 0n ? null : ratioOfBigInts(changeMinor, baselineMinor),
     direction,
   };
 }
 
-function absolute(value: bigint): bigint {
+function ratioOfBigInts(numerator: bigint, denominator: bigint): number {\n  const sign = (numerator < 0n) === (denominator < 0n) ? 1 : -1;\n  const n = numerator < 0n ? -numerator : numerator;\n  const d = denominator < 0n ? -denominator : denominator;\n  const ns = n.toString();\n  const ds = d.toString();\n  const precision = 15;\n  const np = Math.min(precision, ns.length);\n  const dp = Math.min(precision, ds.length);\n  return sign * (Number(ns.slice(0, np)) / Number(ds.slice(0, dp))) * 10 ** (ns.length - np - (ds.length - dp));\n}\n\nfunction absolute(value: bigint): bigint {
   return value < 0n ? -value : value;
 }
