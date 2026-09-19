@@ -24,6 +24,7 @@ export interface BatchIngestTransactionCommand {
 export interface BatchIngestTransactionResult {
   readonly persisted: readonly IngestTransactionResult[];
   readonly duplicates: readonly RawTransaction[];
+  readonly ambiguous: readonly RawTransaction[];
   readonly failures: readonly BatchIngestionFailure[];
 }
 
