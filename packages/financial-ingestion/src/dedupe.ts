@@ -3,6 +3,7 @@ import type { RawTransaction } from "@afrifinos/financial-engine";
 export interface DedupeResult<T extends RawTransaction> {
   readonly unique: readonly T[];
   readonly duplicates: readonly T[];
+  readonly ambiguous: readonly T[];
 }
 
 function fingerprint(transaction: RawTransaction): string {
@@ -29,20 +30,27 @@ export function deduplicateTransactions<T extends RawTransaction>(
   const seen = new Set<string>();
   const unique: T[] = [];
   const duplicates: T[] = [];
+  const ambiguous: T[] = [];
 
   for (const transaction of transactions) {
-    const key = transaction.externalId
-      ? `external:${providerId ?? "unknown"}:${transaction.externalId}`
-      : `fingerprint:${fingerprint(transaction)}`;
-
-    if (seen.has(key)) {
-      duplicates.push(transaction);
+    if (transaction.externalId) {
+      const key = `external:${providerId ?? "unknown"}:${transaction.externalId}`;
+      if (seen.has(key)) duplicates.push(transaction);
+      else { seen.add(key); unique.push(transaction); }
       continue;
     }
 
+    const key = `fingerprint:${fingerprint(transaction)}`;
+    if (seen.has(key)) {
+      // Identical fingerprinted rows may be legitimate repeated cash events.
+      // Keep them out of the authoritative duplicate bucket until reconciliation.
+      ambiguous.push(transaction);
+      unique.push(transaction);
+      continue;
+    }
     seen.add(key);
     unique.push(transaction);
   }
 
-  return { unique, duplicates };
+  return { unique, duplicates, ambiguous };
 }
