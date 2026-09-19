@@ -64,6 +64,8 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [affordability, setAffordability] = useState<{ decision: string; projectedMinimumBalanceMinor: string; bufferShortfallMinor: string; reasons: string[] } | null>(null);
+  const [affordabilityBusy, setAffordabilityBusy] = useState(false);
 
   async function load() {
     setError(null);
@@ -179,6 +181,40 @@ export default function HomePage() {
       setError(cause instanceof Error ? cause.message : "Unable to create transaction");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function checkAffordability(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const amount = String(form.get("amount") ?? "").trim();
+    const recurring = String(form.get("recurring") ?? "").trim();
+    const numericAmount = Number(amount);
+    const numericRecurring = recurring ? Number(recurring) : 0;
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0 || !Number.isSafeInteger(Math.round(numericAmount * 100))) {
+      setError("Enter a valid purchase amount.");
+      return;
+    }
+    if (!Number.isFinite(numericRecurring) || numericRecurring < 0 || !Number.isSafeInteger(Math.round(numericRecurring * 100))) {
+      setError("Enter a valid recurring monthly cost.");
+      return;
+    }
+    setAffordabilityBusy(true);
+    setError(null);
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      if (!session) throw new Error("Please sign in again.");
+      const params = new URLSearchParams({
+        currency: data?.currency ?? "KES",
+        amountMinor: String(Math.round(numericAmount * 100)),
+        additionalRecurringMonthlyMinor: String(Math.round(numericRecurring * 100)),
+      });
+      const response = await apiFetch(`/financial/affordability?${params.toString()}`, session.access_token);
+      setAffordability(await response.json());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to assess affordability");
+    } finally {
+      setAffordabilityBusy(false);
     }
   }
 
