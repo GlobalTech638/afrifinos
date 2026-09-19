@@ -65,3 +65,59 @@ function trend(key: FinancialTrend["key"], currentMinor: bigint, baselineMinor: 
 function ratioOfBigInts(numerator: bigint, denominator: bigint): number {\n  const sign = (numerator < 0n) === (denominator < 0n) ? 1 : -1;\n  const n = numerator < 0n ? -numerator : numerator;\n  const d = denominator < 0n ? -denominator : denominator;\n  const ns = n.toString();\n  const ds = d.toString();\n  const precision = 15;\n  const np = Math.min(precision, ns.length);\n  const dp = Math.min(precision, ds.length);\n  return sign * (Number(ns.slice(0, np)) / Number(ds.slice(0, dp))) * 10 ** (ns.length - np - (ds.length - dp));\n}\n\nfunction absolute(value: bigint): bigint {
   return value < 0n ? -value : value;
 }
+
+export interface CategoryTrend {
+  readonly categoryId: string;
+  readonly currentMinor: bigint;
+  readonly baselineMinor: bigint;
+  readonly changeMinor: bigint;
+  readonly changeRatio: number | null;
+  readonly direction: "up" | "down" | "stable";
+}
+
+export function calculateCategoryTrends(
+  transactions: readonly Transaction[],
+  currency: CurrencyCode,
+): readonly CategoryTrend[] {
+  const months = new Map<string, Map<string, bigint>>();
+  for (const transaction of transactions) {
+    if (transaction.total.currency !== currency || (transaction.type !== "expense" && transaction.type !== "fee") || !transaction.categoryId) continue;
+    const month = transaction.occurredAt.slice(0, 7);
+    const categories = months.get(month) ?? new Map<string, bigint>();
+    categories.set(transaction.categoryId, (categories.get(transaction.categoryId) ?? 0n) + absolute(transaction.total.amountMinor));
+    months.set(month, categories);
+  }
+
+  const ordered = [...months.entries()].sort(([a], [b]) => a.localeCompare(b));
+  if (ordered.length < 3) return [];
+  const latest = ordered[ordered.length - 1]?.[1];
+  if (!latest) return [];
+
+  const categoryIds = new Set<string>();
+  for (const [, categories] of ordered) for (const categoryId of categories.keys()) categoryIds.add(categoryId);
+
+  return [...categoryIds].map((categoryId) => {
+    const prior = ordered.slice(0, -1);
+    const baselineMinor = prior.reduce((sum, [, categories]) => sum + (categories.get(categoryId) ?? 0n), 0n) / BigInt(prior.length);
+    return categoryTrend(categoryId, latest.get(categoryId) ?? 0n, baselineMinor);
+  }).sort((a, b) => {
+    const aa = a.changeMinor < 0n ? -a.changeMinor : a.changeMinor;
+    const bb = b.changeMinor < 0n ? -b.changeMinor : b.changeMinor;
+    return aa === bb ? a.categoryId.localeCompare(b.categoryId) : aa > bb ? -1 : 1;
+  });
+}
+
+function categoryTrend(categoryId: string, currentMinor: bigint, baselineMinor: bigint): CategoryTrend {
+  const changeMinor = currentMinor - baselineMinor;
+  const magnitude = baselineMinor < 0n ? -baselineMinor : baselineMinor;
+  const threshold = magnitude / 20n;
+  const direction = changeMinor > threshold ? "up" : changeMinor < -threshold ? "down" : "stable";
+  return {
+    categoryId,
+    currentMinor,
+    baselineMinor,
+    changeMinor,
+    changeRatio: baselineMinor === 0n ? null : ratioOfBigInts(changeMinor, baselineMinor),
+    direction,
+  };
+}
