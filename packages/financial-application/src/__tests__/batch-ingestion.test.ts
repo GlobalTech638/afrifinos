@@ -58,7 +58,32 @@ describe("ingestTransactionBatch", () => {
 
     expect(result.persisted).toHaveLength(2);
     expect(result.duplicates).toHaveLength(1);
+    expect(result.ambiguous).toHaveLength(0);
     expect(repository.transactions).toHaveLength(2);
     expect(repository.entries).toHaveLength(4);
+  });
+});
+
+
+describe("ingestTransactionBatch ambiguous fingerprints", () => {
+  it("keeps identical rows without external IDs for reconciliation", async () => {
+    const repository = new InMemoryWriteRepository();
+    const input = {
+      occurredAt: "2026-09-01T08:00:00Z",
+      description: "Cash purchase",
+      amountMinor: "2500",
+      currency: "KES" as const,
+    };
+    const result = await ingestTransactionBatch(repository, {
+      ownerId: "user-1",
+      primaryAccountId: "mpesa",
+      counterAccountId: "income",
+      inputs: [input, { ...input }],
+      sourceKind: "csv",
+      transactionIdFor: (_, index) => `tx-${index}`,
+    });
+    expect(result.persisted).toHaveLength(2);
+    expect(result.duplicates).toHaveLength(0);
+    expect(result.ambiguous).toHaveLength(1);
   });
 });
