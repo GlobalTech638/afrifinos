@@ -121,3 +121,34 @@ function categoryTrend(categoryId: string, currentMinor: bigint, baselineMinor: 
     direction,
   };
 }
+
+export interface SpendingDriver {
+  readonly categoryId: string;
+  readonly changeMinor: bigint;
+  readonly contributionRatio: number | null;
+  readonly direction: "increase" | "decrease";
+}
+
+export function calculateSpendingDrivers(categoryTrends: readonly CategoryTrend[]): readonly SpendingDriver[] {
+  const changed = categoryTrends.filter((trend) => trend.changeMinor !== 0n);
+  const totalAbsoluteChange = changed.reduce((sum, trend) => {
+    const value = trend.changeMinor < 0n ? -trend.changeMinor : trend.changeMinor;
+    return sum + value;
+  }, 0n);
+
+  return changed
+    .map((trend) => ({
+      categoryId: trend.categoryId,
+      changeMinor: trend.changeMinor,
+      contributionRatio: totalAbsoluteChange === 0n ? null : ratioOfBigInts(
+        trend.changeMinor < 0n ? -trend.changeMinor : trend.changeMinor,
+        totalAbsoluteChange,
+      ),
+      direction: trend.changeMinor > 0n ? "increase" : "decrease",
+    }))
+    .sort((a, b) => {
+      const aa = a.changeMinor < 0n ? -a.changeMinor : a.changeMinor;
+      const bb = b.changeMinor < 0n ? -b.changeMinor : b.changeMinor;
+      return aa === bb ? a.categoryId.localeCompare(b.categoryId) : aa > bb ? -1 : 1;
+    });
+}
