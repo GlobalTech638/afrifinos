@@ -19,7 +19,7 @@ function forecast(minimum: bigint, ending: bigint, buffer: bigint): CashForecast
       safetyBufferMinor: buffer,
       shortfallMinor: 0n,
     },
-    points: [],
+    points: Array.from({ length: 90 }, (_, index) => ({\n      date: new Date(Date.UTC(2026, 0, 2 + index)).toISOString(),\n      projectedIncomeMinor: 0n,\n      projectedExpenseMinor: 0n,\n      projectedNetCashFlowMinor: 0n,\n      projectedBalanceMinor: ending,\n    })),
   };
 }
 
