@@ -3,6 +3,7 @@ import type { CashForecast } from "./forecasting.js";
 import type { FinancialSummary } from "./financial-summary.js";
 import type { TemporalIntelligence } from "./temporal-intelligence.js";
 import type { MerchantProfile } from "./merchant-intelligence.js";
+import type { FinancialTrend } from "./trend-intelligence.js";
 
 export const INTELLIGENCE_SCHEMA_VERSION = "2026-09-v1";
 
@@ -34,6 +35,7 @@ export interface FinancialIntelligenceSnapshot {
   readonly summary: FinancialSummary;
   readonly temporal: TemporalIntelligence;
   readonly merchants: readonly MerchantProfile[];
+  readonly trends: readonly FinancialTrend[];
   readonly forecast: CashForecast;
   readonly facts: readonly FinancialFact[];
 }
@@ -58,6 +60,7 @@ export function createFinancialIntelligenceSnapshot(input: {
   readonly summary: FinancialSummary;
   readonly temporal: TemporalIntelligence;
   readonly merchants?: readonly MerchantProfile[];
+  readonly trends?: readonly FinancialTrend[];
   readonly forecast: CashForecast;
   readonly facts?: readonly FinancialFact[];
   readonly generatedAt?: string;
@@ -76,6 +79,7 @@ export function createFinancialIntelligenceSnapshot(input: {
     summary: input.summary,
     temporal: input.temporal,
     merchants: input.merchants ?? [],
+    trends: input.trends ?? [],
     forecast: input.forecast,
     facts: input.facts ?? [],
   };
