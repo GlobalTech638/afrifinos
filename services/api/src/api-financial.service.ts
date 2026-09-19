@@ -10,6 +10,7 @@ import {
   forecastCashFlow,
   toFinancialIntelligenceDto,
   deriveFinancialFacts,
+  deriveFinancialSignals,
   buildMerchantProfiles,
   calculateFinancialTrends,
   calculateCategoryTrends,
@@ -101,12 +102,13 @@ export class ApiFinancialService {
       });
       const facts = deriveFinancialFacts(provisional);
 
-      return createFinancialIntelligenceSnapshot({
+      const signals = deriveFinancialSignals(facts, generatedAt);\n\n      return createFinancialIntelligenceSnapshot({
         summary,
         temporal,
         merchants,
         forecast,
         facts,
+        signals,
         generatedAt,
       });
     } catch (error) {
