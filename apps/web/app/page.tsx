@@ -189,13 +189,13 @@ export default function HomePage() {
     const form = new FormData(event.currentTarget);
     const amount = String(form.get("amount") ?? "").trim();
     const recurring = String(form.get("recurring") ?? "").trim();
-    const numericAmount = Number(amount);
-    const numericRecurring = recurring ? Number(recurring) : 0;
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0 || !Number.isSafeInteger(Math.round(numericAmount * 100))) {
+    const amountMinor = parseKesToMinor(amount);
+    const recurringMinor = recurring ? parseKesToMinor(recurring) : "0";
+    if (!amountMinor || amountMinor === "0") {
       setError("Enter a valid purchase amount.");
       return;
     }
-    if (!Number.isFinite(numericRecurring) || numericRecurring < 0 || !Number.isSafeInteger(Math.round(numericRecurring * 100))) {
+    if (recurringMinor === null) {
       setError("Enter a valid recurring monthly cost.");
       return;
     }
@@ -206,8 +206,8 @@ export default function HomePage() {
       if (!session) throw new Error("Please sign in again.");
       const params = new URLSearchParams({
         currency: data?.currency ?? "KES",
-        amountMinor: String(Math.round(numericAmount * 100)),
-        additionalRecurringMonthlyMinor: String(Math.round(numericRecurring * 100)),
+        amountMinor,
+        additionalRecurringMonthlyMinor: recurringMinor,
       });
       const response = await apiFetch(`/financial/affordability?${params.toString()}`, session.access_token);
       setAffordability(await response.json());
@@ -442,6 +442,13 @@ async function apiFetch(path: string, accessToken: string, init: RequestInit = {
     throw new Error(body?.message ?? `API returned ${response.status}`);
   }
   return response;
+}
+
+function parseKesToMinor(value: string): string | null {
+  const normalized = value.trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) return null;
+  const [whole = "0", fraction = ""] = normalized.split(".");
+  return `${BigInt(whole) * 100n + BigInt((fraction + "00").slice(0, 2))}`;
 }
 
 function formatMinor(value: string): string {
