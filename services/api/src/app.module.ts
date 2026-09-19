@@ -6,7 +6,6 @@ import { HealthController } from "./health.controller.js";
 import { AccountsController } from "./accounts.controller.js";
 import { TransactionsController } from "./transactions.controller.js";
 import { FinancialController } from "./financial.controller.js";
-import { AffordabilityController } from "./affordability.controller.js";
 import { ImportsController } from "./imports.controller.js";
 import { ApiFinancialService } from "./api-financial.service.js";
 import { JwtAuthGuard } from "./auth-context.js";
@@ -32,7 +31,6 @@ const repositoryProvider: Provider = {
     AccountsController,
     TransactionsController,
     FinancialController,
-    AffordabilityController,
     ImportsController,
   ],
   providers: [
