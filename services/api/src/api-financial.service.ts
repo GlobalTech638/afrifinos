@@ -12,6 +12,7 @@ import {
   deriveFinancialFacts,
   buildMerchantProfiles,
   calculateFinancialTrends,
+  calculateCategoryTrends,
 } from "@afrifinos/financial-engine";
 import { FINANCIAL_REPOSITORY } from "./app.module.js";
 
@@ -71,6 +72,7 @@ export class ApiFinancialService {
       const temporal = buildTemporalIntelligence(transactions, currency);
       const merchants = buildMerchantProfiles(transactions, currency);
       const trends = calculateFinancialTrends(transactions, currency);
+      const categoryTrends = calculateCategoryTrends(transactions, currency);
       const baseline = calculateMonthlyForecastBaseline(temporal.periods);
       // One month of observed average expenses is the initial deterministic safety buffer.
       // A future policy layer can replace this with user-specific or risk-tiered buffers.
@@ -90,6 +92,7 @@ export class ApiFinancialService {
         temporal,
         merchants,
         trends,
+        categoryTrends,
         forecast,
         generatedAt,
       });
