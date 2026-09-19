@@ -122,3 +122,17 @@ export function deriveFinancialSignals(
       detectedAt,
     }));
 }
+
+export type FinancialSignalSeverity = "info" | "warning" | "critical";
+export type FinancialSignalStatus = "active" | "resolved";
+
+export interface FinancialSignal {
+  readonly id: string;
+  readonly category: FinancialFactCategory;
+  readonly severity: FinancialSignalSeverity;
+  readonly status: FinancialSignalStatus;
+  readonly title: string;
+  readonly statement: string;
+  readonly evidenceIds: readonly string[];
+  readonly generatedAt: string;
+}
