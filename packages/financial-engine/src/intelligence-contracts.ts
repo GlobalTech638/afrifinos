@@ -2,6 +2,7 @@ import type { CurrencyCode } from "@afrifinos/financial-domain";
 import type { CashForecast } from "./forecasting.js";
 import type { FinancialSummary } from "./financial-summary.js";
 import type { TemporalIntelligence } from "./temporal-intelligence.js";
+import type { MerchantProfile } from "./merchant-intelligence.js";
 
 export const INTELLIGENCE_SCHEMA_VERSION = "2026-09-v1";
 
@@ -32,6 +33,7 @@ export interface FinancialIntelligenceSnapshot {
   readonly generatedAt: string;
   readonly summary: FinancialSummary;
   readonly temporal: TemporalIntelligence;
+  readonly merchants: readonly MerchantProfile[];
   readonly forecast: CashForecast;
   readonly facts: readonly FinancialFact[];
 }
@@ -55,6 +57,7 @@ export interface FinancialAdviceResponse {
 export function createFinancialIntelligenceSnapshot(input: {
   readonly summary: FinancialSummary;
   readonly temporal: TemporalIntelligence;
+  readonly merchants?: readonly MerchantProfile[];
   readonly forecast: CashForecast;
   readonly facts?: readonly FinancialFact[];
   readonly generatedAt?: string;
@@ -72,6 +75,7 @@ export function createFinancialIntelligenceSnapshot(input: {
     generatedAt: input.generatedAt ?? new Date().toISOString(),
     summary: input.summary,
     temporal: input.temporal,
+    merchants: input.merchants ?? [],
     forecast: input.forecast,
     facts: input.facts ?? [],
   };
