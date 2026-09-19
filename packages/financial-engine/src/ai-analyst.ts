@@ -51,6 +51,26 @@ export function deriveFinancialFacts(snapshot: FinancialIntelligenceSnapshot): r
     facts.push(fact(`anomaly-${anomaly.transactionId}`, "anomaly", `Transaction ${anomaly.transactionId} is unusually large relative to its baseline.`, "warning", [`temporal.anomalies.${anomaly.transactionId}`]));
   }
 
+
+  for (const trend of snapshot.trends) {
+    if (trend.direction === "stable" || trend.changeRatio === null) continue;
+    const magnitude = Math.abs(trend.changeRatio);
+    if (magnitude < 0.10) continue;
+    const label = trend.key === "monthly_income"
+      ? "income"
+      : trend.key === "monthly_expense"
+        ? "expenses"
+        : "net cash flow";
+    const direction = trend.direction === "up" ? "increased" : "decreased";
+    facts.push(fact(
+      `trend-${trend.key}`,
+      "cash_flow",
+      `Latest monthly ${label} ${direction} ${Math.round(magnitude * 100)}% versus the prior observed-month baseline.`,
+      trend.key === "monthly_expense" && trend.direction === "up" ? "warning" : "info",
+      [`trends.${trend.key}`],
+    ));
+  }
+
   for (const recurring of snapshot.temporal.recurring.slice(0, 10)) {
     if (recurring.type === "expense") {
       facts.push(fact(`recurring-${recurring.key}`, "recurring", `A recurring expense is detected approximately every ${recurring.averageIntervalDays} days.`, "info", [`temporal.recurring.${recurring.key}`]));
