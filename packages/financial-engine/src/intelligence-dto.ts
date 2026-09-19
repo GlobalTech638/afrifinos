@@ -13,6 +13,7 @@ export interface FinancialIntelligenceDto {
   readonly temporal: unknown;
   readonly merchants: unknown;
   readonly trends: unknown;
+  readonly categoryTrends: unknown;
   readonly forecast: unknown;
   readonly facts: FinancialIntelligenceSnapshot["facts"];
 }
@@ -45,6 +46,7 @@ export function toFinancialIntelligenceDto(
     temporal: snapshot.temporal,
     merchants: snapshot.merchants,
     trends: snapshot.trends,
+    categoryTrends: snapshot.categoryTrends,
     forecast: snapshot.forecast,
     facts: snapshot.facts,
   }) as FinancialIntelligenceDto;
