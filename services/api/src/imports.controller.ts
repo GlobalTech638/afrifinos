@@ -52,6 +52,7 @@ export class ImportsController {
         duplicateCount:
           batch.persisted.filter((item) => item.persistence === "duplicate").length +
           batch.duplicates.length,
+        ambiguousCount: batch.ambiguous.length,
         rejectedCount: parsed.errors.length + persistenceErrors.length,
         parseErrors: parsed.errors,
         persistenceErrors,
