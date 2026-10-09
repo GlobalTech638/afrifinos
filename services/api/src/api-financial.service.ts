@@ -81,7 +81,7 @@ export class ApiFinancialService {
       });
       const derivedSignals = deriveFinancialSignals(withFacts);
       const storedSignals = await this.repository.reconcileFinancialSignals(ownerId, derivedSignals);
-      const signals = storedSignals.map((signal) => ({
+      const signals = storedSignals.filter((signal) => signal.status !== "resolved").map((signal) => ({
         id: signal.signalId,
         category: signal.category as (typeof derivedSignals)[number]["category"],
         severity: signal.severity,
