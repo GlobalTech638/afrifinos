@@ -56,6 +56,7 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
           ON CONFLICT (owner_id, signal_id) DO UPDATE SET
             category = EXCLUDED.category, severity = EXCLUDED.severity, title = EXCLUDED.title,
             statement = EXCLUDED.statement, evidence_ids = EXCLUDED.evidence_ids,
+            first_detected_at = CASE WHEN financial_signals.status = 'resolved' THEN EXCLUDED.first_detected_at ELSE financial_signals.first_detected_at END,
             status = CASE WHEN financial_signals.status = 'acknowledged' THEN 'acknowledged' ELSE 'active' END,
             last_detected_at = EXCLUDED.last_detected_at,
             acknowledged_at = CASE WHEN financial_signals.status = 'acknowledged' THEN financial_signals.acknowledged_at ELSE NULL END,
