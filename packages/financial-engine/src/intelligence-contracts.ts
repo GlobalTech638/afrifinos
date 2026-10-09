@@ -38,6 +38,7 @@ export interface FinancialIntelligenceSnapshot {
   readonly trends: readonly FinancialTrend[];
   readonly categoryTrends: readonly CategoryTrend[];
   readonly spendingDrivers: readonly SpendingDriver[];
+  readonly signals: readonly FinancialSignal[];
   readonly forecast: CashForecast;
   readonly facts: readonly FinancialFact[];
 }
@@ -65,6 +66,7 @@ export function createFinancialIntelligenceSnapshot(input: {
   readonly trends?: readonly FinancialTrend[];
   readonly categoryTrends?: readonly CategoryTrend[];
   readonly spendingDrivers?: readonly SpendingDriver[];
+  readonly signals?: readonly FinancialSignal[];
   readonly forecast: CashForecast;
   readonly facts?: readonly FinancialFact[];
   readonly generatedAt?: string;
@@ -86,6 +88,7 @@ export function createFinancialIntelligenceSnapshot(input: {
     trends: input.trends ?? [],
     categoryTrends: input.categoryTrends ?? [],
     spendingDrivers: input.spendingDrivers ?? [],
+    signals: input.signals ?? [],
     forecast: input.forecast,
     facts: input.facts ?? [],
   };
