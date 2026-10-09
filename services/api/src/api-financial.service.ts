@@ -15,6 +15,7 @@ import {
   calculateFinancialTrends,
   calculateCategoryTrends,
   calculateSpendingDrivers,
+  deriveFinancialSignals,
 } from "@afrifinos/financial-engine";
 import { FINANCIAL_REPOSITORY } from "./app.module.js";
 
