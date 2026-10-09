@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { deriveFinancialSignals } from "../intelligence-contracts.js";
+import { deriveFinancialSignals } from "../financial-signals.js";
+import type { FinancialIntelligenceSnapshot } from "../intelligence-contracts.js";
 
 describe("financial signals", () => {
-  it("turns warning and critical facts into active signals", () => {
-    const result = deriveFinancialSignals([
-      { id: "cash-1", category: "cash_flow", statement: "Negative cash flow", severity: "warning", evidence: ["summary.cashFlow"] },
-      { id: "liquidity-1", category: "forecast", statement: "Liquidity shortfall", severity: "critical", evidence: ["forecast.liquidityRisk"] },
-    ], "2026-09-19T00:00:00Z");
-    expect(result).toHaveLength(2);
-    expect(result[1]).toMatchObject({ id: "signal-liquidity-1", status: "active", severity: "critical" });
+  it("creates a critical liquidity signal with stable identity", () => {
+    const snapshot = {
+      generatedAt: "2026-10-09T00:00:00Z",
+      forecast: { liquidityRisk: { level: "critical" } },
+      spendingDrivers: [],
+    } as unknown as FinancialIntelligenceSnapshot;
+    const result = deriveFinancialSignals(snapshot);
+    expect(result[0]).toMatchObject({ id: "liquidity-critical", severity: "critical", status: "active", detectedAt: "2026-10-09T00:00:00Z" });
   });
 });
