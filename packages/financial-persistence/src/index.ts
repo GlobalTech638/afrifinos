@@ -8,7 +8,35 @@ import type {
   SavingsGoal,
 } from "@afrifinos/financial-domain";
 
+export type PersistedSignalStatus = "active" | "acknowledged" | "resolved";
+export interface FinancialSignalInput {
+  readonly id: string;
+  readonly category: string;
+  readonly severity: "info" | "warning" | "critical";
+  readonly status: "active" | "resolved" | "acknowledged";
+  readonly title: string;
+  readonly statement: string;
+  readonly evidenceIds: readonly string[];
+  readonly detectedAt: string;
+}
+export interface StoredFinancialSignal {
+  readonly ownerId: string;
+  readonly signalId: string;
+  readonly category: string;
+  readonly severity: "info" | "warning" | "critical";
+  readonly status: PersistedSignalStatus;
+  readonly title: string;
+  readonly statement: string;
+  readonly evidenceIds: readonly string[];
+  readonly firstDetectedAt: string;
+  readonly lastDetectedAt: string;
+  readonly acknowledgedAt?: string;
+  readonly resolvedAt?: string;
+}
 export interface FinancialRepository {
+  reconcileFinancialSignals(ownerId: string, signals: readonly FinancialSignalInput[]): Promise<readonly StoredFinancialSignal[]>;
+  acknowledgeFinancialSignal(ownerId: string, signalId: string): Promise<StoredFinancialSignal | null>;
+  getFinancialSignals(ownerId: string, status?: PersistedSignalStatus): Promise<readonly StoredFinancialSignal[]>;
   ensureOwner(ownerId: string): Promise<void>;
   getAccounts(ownerId: string): Promise<readonly Account[]>;
   saveAccount(account: Account): Promise<void>;
