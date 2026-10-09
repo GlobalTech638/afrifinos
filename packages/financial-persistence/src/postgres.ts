@@ -1,7 +1,7 @@
 import type {
   Account, Asset, Liability, LedgerEntry, Obligation, SavingsGoal, Transaction,
 } from "@afrifinos/financial-domain";
-import type { FinancialRepository, TransactionWriteRepository, TransactionWriteResult } from "./index.js";
+import type { FinancialRepository, TransactionWriteRepository, TransactionWriteResult, FinancialSignalInput, StoredFinancialSignal, PersistedSignalStatus } from "./index.js";
 
 export interface SqlQueryResult<Row extends Record<string, unknown> = Record<string, unknown>> { readonly rows: readonly Row[]; }
 export interface SqlClient {
@@ -34,4 +34,52 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
   async getLiabilities(ownerId: string): Promise<readonly Liability[]> { const result = await this.client.query<Record<string, unknown>>(`SELECT id, owner_id, name, outstanding_minor, currency, as_of, liability_type, interest_rate_annual FROM liabilities WHERE owner_id = $1 ORDER BY as_of DESC`, [ownerId]); return result.rows.map((row) => ({ liabilityId: String(row.id), ownerId: String(row.owner_id), name: String(row.name), outstanding: { amountMinor: BigInt(String(row.outstanding_minor)), currency: requiredCurrency(String(row.currency)) }, liabilityType: String(row.liability_type) as Liability["liabilityType"], ...(row.interest_rate_annual !== null && row.interest_rate_annual !== undefined ? { interestRateAnnual: Number(row.interest_rate_annual) } : {}) })); }
   async getObligations(ownerId: string): Promise<readonly Obligation[]> { const result = await this.client.query<Record<string, unknown>>(`SELECT id, owner_id, name, amount_minor, currency, due_at, status, recurring, recurrence, kind, liability_id FROM obligations WHERE owner_id = $1 ORDER BY due_at ASC NULLS LAST`, [ownerId]); return result.rows.map((row) => ({ obligationId: String(row.id), ownerId: String(row.owner_id), name: String(row.name), amount: { amountMinor: BigInt(String(row.amount_minor)), currency: requiredCurrency(String(row.currency)) }, ...(row.due_at ? { dueAt: String(row.due_at) } : {}), status: String(row.status) as Obligation["status"], recurring: Boolean(row.recurring), recurrence: String(row.recurrence) as Obligation["recurrence"], kind: String(row.kind) as Obligation["kind"], ...(row.liability_id ? { liabilityId: String(row.liability_id) } : {}) })); }
   async getSavingsGoals(ownerId: string): Promise<readonly SavingsGoal[]> { const result = await this.client.query<Record<string, unknown>>(`SELECT id, owner_id, name, target_minor, current_minor, currency, target_date, status FROM savings_goals WHERE owner_id = $1 ORDER BY target_date ASC NULLS LAST`, [ownerId]); return result.rows.map((row) => ({ goalId: String(row.id), ownerId: String(row.owner_id), name: String(row.name), target: { amountMinor: BigInt(String(row.target_minor)), currency: requiredCurrency(String(row.currency)) }, current: { amountMinor: BigInt(String(row.current_minor)), currency: requiredCurrency(String(row.currency)) }, ...(row.target_date ? { targetAt: String(row.target_date) } : {}), status: String(row.status) as SavingsGoal["status"] })); }
+  private signalFromRow(row: Record<string, unknown>): StoredFinancialSignal {
+    const rawEvidence = row.evidence_ids;
+    const evidenceIds = Array.isArray(rawEvidence) ? rawEvidence.map(String) : typeof rawEvidence === "string" ? JSON.parse(rawEvidence) as string[] : [];
+    return {
+      ownerId: String(row.owner_id), signalId: String(row.signal_id), category: String(row.category),
+      severity: String(row.severity) as StoredFinancialSignal["severity"],
+      status: String(row.status) as PersistedSignalStatus, title: String(row.title), statement: String(row.statement),
+      evidenceIds, firstDetectedAt: new Date(String(row.first_detected_at)).toISOString(),
+      lastDetectedAt: new Date(String(row.last_detected_at)).toISOString(),
+      ...(row.acknowledged_at ? { acknowledgedAt: new Date(String(row.acknowledged_at)).toISOString() } : {}),
+      ...(row.resolved_at ? { resolvedAt: new Date(String(row.resolved_at)).toISOString() } : {}),
+    };
+  }
+  async reconcileFinancialSignals(ownerId: string, signals: readonly FinancialSignalInput[]): Promise<readonly StoredFinancialSignal[]> {
+    return this.client.transaction(async (tx) => {
+      for (const signal of signals) {
+        await tx.query(`INSERT INTO financial_signals
+          (owner_id, signal_id, category, severity, status, title, statement, evidence_ids, first_detected_at, last_detected_at, updated_at)
+          VALUES ($1, $2, $3, $4, 'active', $5, $6, $7::jsonb, $8, $8, now())
+          ON CONFLICT (owner_id, signal_id) DO UPDATE SET
+            category = EXCLUDED.category, severity = EXCLUDED.severity, title = EXCLUDED.title,
+            statement = EXCLUDED.statement, evidence_ids = EXCLUDED.evidence_ids,
+            status = CASE WHEN financial_signals.status = 'acknowledged' THEN 'acknowledged' ELSE 'active' END,
+            last_detected_at = EXCLUDED.last_detected_at,
+            acknowledged_at = CASE WHEN financial_signals.status = 'acknowledged' THEN financial_signals.acknowledged_at ELSE NULL END,
+            resolved_at = NULL, updated_at = now()`,
+          [ownerId, signal.id, signal.category, signal.severity, signal.title, signal.statement, JSON.stringify(signal.evidenceIds), signal.detectedAt]);
+      }
+      const ids = signals.map((signal) => signal.id);
+      await tx.query(`UPDATE financial_signals SET status = 'resolved', resolved_at = now(), updated_at = now()
+        WHERE owner_id = $1 AND status IN ('active', 'acknowledged') AND NOT (signal_id = ANY($2::text[]))`, [ownerId, ids]);
+      const result = await tx.query<Record<string, unknown>>(`SELECT * FROM financial_signals WHERE owner_id = $1 ORDER BY last_detected_at DESC`, [ownerId]);
+      return result.rows.map((row) => this.signalFromRow(row));
+    });
+  }
+  async acknowledgeFinancialSignal(ownerId: string, signalId: string): Promise<StoredFinancialSignal | null> {
+    const result = await this.client.query<Record<string, unknown>>(`UPDATE financial_signals
+      SET status = 'acknowledged', acknowledged_at = COALESCE(acknowledged_at, now()), updated_at = now()
+      WHERE owner_id = $1 AND signal_id = $2 AND status IN ('active', 'acknowledged')
+      RETURNING *`, [ownerId, signalId]);
+    return result.rows[0] ? this.signalFromRow(result.rows[0]) : null;
+  }
+  async getFinancialSignals(ownerId: string, status?: PersistedSignalStatus): Promise<readonly StoredFinancialSignal[]> {
+    const result = await this.client.query<Record<string, unknown>>(`SELECT * FROM financial_signals
+      WHERE owner_id = $1 AND ($2::text IS NULL OR status = $2)
+      ORDER BY last_detected_at DESC`, [ownerId, status ?? null]);
+    return result.rows.map((row) => this.signalFromRow(row));
+  }
 }
