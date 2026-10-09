@@ -91,6 +91,7 @@ export function createFinancialIntelligenceSnapshot(input: {
   };
 }
 
+
 export type FinancialSignalSeverity = "info" | "warning" | "critical";
 export type FinancialSignalStatus = "active" | "resolved";
 
@@ -103,36 +104,4 @@ export interface FinancialSignal {
   readonly statement: string;
   readonly evidenceIds: readonly string[];
   readonly detectedAt: string;
-}
-
-export function deriveFinancialSignals(
-  facts: readonly FinancialFact[],
-  detectedAt: string,
-): readonly FinancialSignal[] {
-  return facts
-    .filter((fact) => fact.severity)
-    .map((fact) => ({
-      id: `signal-${fact.id}`,
-      category: fact.category,
-      severity: fact.severity ?? "info",
-      status: "active",
-      title: fact.statement,
-      statement: fact.statement,
-      evidenceIds: fact.evidence ?? [],
-      detectedAt,
-    }));
-}
-
-export type FinancialSignalSeverity = "info" | "warning" | "critical";
-export type FinancialSignalStatus = "active" | "resolved";
-
-export interface FinancialSignal {
-  readonly id: string;
-  readonly category: FinancialFactCategory;
-  readonly severity: FinancialSignalSeverity;
-  readonly status: FinancialSignalStatus;
-  readonly title: string;
-  readonly statement: string;
-  readonly evidenceIds: readonly string[];
-  readonly generatedAt: string;
 }
