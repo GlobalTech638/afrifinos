@@ -46,6 +46,45 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries[0]?.values[8]).toBe("2500");
   });
 
+
+  it("reconciles signal lifecycle within an owner-scoped transaction", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await repository.reconcileFinancialSignals("user-1", [{
+      id: "liquidity-critical",
+      category: "forecast",
+      severity: "critical",
+      status: "active",
+      title: "Critical liquidity risk",
+      statement: "Projected liquidity reaches the safety threshold.",
+      evidenceIds: ["forecast.liquidityRisk"],
+      detectedAt: "2026-09-15T10:00:00.000Z",
+    }]);
+
+    expect(client.queries).toHaveLength(3);
+    expect(client.queries[0]?.text).toContain("INSERT INTO financial_signals");
+    expect(client.queries[0]?.text).toContain("ON CONFLICT (owner_id, signal_id)");
+    expect(client.queries[0]?.text).toContain("financial_signals.status = 'resolved'");
+    expect(client.queries[0]?.values[0]).toBe("user-1");
+    expect(client.queries[0]?.values[6]).toBe(JSON.stringify(["forecast.liquidityRisk"]));
+    expect(client.queries[1]?.text).toContain("WHERE owner_id = $1");
+    expect(client.queries[1]?.text).toContain("status IN ('active', 'acknowledged')");
+    expect(client.queries[1]?.values).toEqual(["user-1", ["liquidity-critical"]]);
+    expect(client.queries[2]?.text).toContain("WHERE owner_id = $1");
+  });
+
+  it("acknowledges a signal only within the specified owner's scope", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.acknowledgeFinancialSignal("user-1", "liquidity-critical")).resolves.toBeNull();
+
+    expect(client.queries[0]?.text).toContain("WHERE owner_id = $1 AND signal_id = $2");
+    expect(client.queries[0]?.text).toContain("status IN ('active', 'acknowledged')");
+    expect(client.queries[0]?.values).toEqual(["user-1", "liquidity-critical"]);
+  });
+
   it("does not issue an account query for an empty ledger account set", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
