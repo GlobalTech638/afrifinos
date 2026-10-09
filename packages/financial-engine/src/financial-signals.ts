@@ -24,7 +24,7 @@ export function deriveFinancialSignals(snapshot: FinancialIntelligenceSnapshot):
       title: "High liquidity risk",
       statement: "Projected liquidity falls below the configured safety buffer during the forecast horizon.",
       evidenceIds: ["forecast.liquidityRisk"],
-      generatedAt,
+      detectedAt,
     });
   }
 
@@ -38,7 +38,7 @@ export function deriveFinancialSignals(snapshot: FinancialIntelligenceSnapshot):
       title: "Major spending driver",
       statement: `Category ${driver.categoryId} accounts for a significant share of the recent spending change.`,
       evidenceIds: [`categoryTrends.${driver.categoryId}`],
-      generatedAt,
+      detectedAt,
     });
   }
 
