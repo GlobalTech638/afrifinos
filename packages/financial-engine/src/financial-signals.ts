@@ -1,7 +1,7 @@
 import type { FinancialIntelligenceSnapshot, FinancialSignal } from "./intelligence-contracts.js";
 
 export function deriveFinancialSignals(snapshot: FinancialIntelligenceSnapshot): readonly FinancialSignal[] {
-  const generatedAt = snapshot.generatedAt;
+  const detectedAt = snapshot.generatedAt;
   const signals: FinancialSignal[] = [];
 
   if (snapshot.forecast.liquidityRisk.level === "critical") {
@@ -13,7 +13,7 @@ export function deriveFinancialSignals(snapshot: FinancialIntelligenceSnapshot):
       title: "Critical liquidity risk",
       statement: "Projected liquidity reaches zero or below the safety threshold during the forecast horizon.",
       evidenceIds: ["forecast.liquidityRisk"],
-      generatedAt,
+      detectedAt,
     });
   } else if (snapshot.forecast.liquidityRisk.level === "high") {
     signals.push({
