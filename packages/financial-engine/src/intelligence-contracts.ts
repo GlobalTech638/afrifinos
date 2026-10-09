@@ -96,7 +96,7 @@ export function createFinancialIntelligenceSnapshot(input: {
 
 
 export type FinancialSignalSeverity = "info" | "warning" | "critical";
-export type FinancialSignalStatus = "active" | "resolved";
+export type FinancialSignalStatus = "active" | "acknowledged" | "resolved";
 
 export interface FinancialSignal {
   readonly id: string;
