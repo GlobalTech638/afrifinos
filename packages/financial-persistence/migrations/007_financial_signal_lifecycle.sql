@@ -6,13 +6,15 @@ CREATE TABLE IF NOT EXISTS financial_signals (
   status TEXT NOT NULL CHECK (status IN ('active', 'acknowledged', 'resolved')),
   title TEXT NOT NULL,
   statement TEXT NOT NULL,
-  evidence_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  evidence_ids JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(evidence_ids) = 'array'),
   first_detected_at TIMESTAMPTZ NOT NULL,
   last_detected_at TIMESTAMPTZ NOT NULL,
   acknowledged_at TIMESTAMPTZ,
   resolved_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (owner_id, signal_id)
+  PRIMARY KEY (owner_id, signal_id),
+  CHECK (last_detected_at >= first_detected_at),
+  CHECK (status <> 'resolved' OR resolved_at IS NOT NULL)
 );
 
 CREATE INDEX IF NOT EXISTS financial_signals_owner_status_updated_idx
