@@ -62,16 +62,18 @@ describe("PostgresFinancialRepository", () => {
       detectedAt: "2026-09-15T10:00:00.000Z",
     }]);
 
-    expect(client.queries).toHaveLength(3);
-    expect(client.queries[0]?.text).toContain("INSERT INTO financial_signals");
-    expect(client.queries[0]?.text).toContain("ON CONFLICT (owner_id, signal_id)");
-    expect(client.queries[0]?.text).toContain("financial_signals.status = 'resolved'");
-    expect(client.queries[0]?.values[0]).toBe("user-1");
-    expect(client.queries[0]?.values[6]).toBe(JSON.stringify(["forecast.liquidityRisk"]));
-    expect(client.queries[1]?.text).toContain("WHERE owner_id = $1");
-    expect(client.queries[1]?.text).toContain("status IN ('active', 'acknowledged')");
-    expect(client.queries[1]?.values).toEqual(["user-1", ["liquidity-critical"]]);
+    expect(client.queries).toHaveLength(4);
+    expect(client.queries[0]?.text).toContain("pg_advisory_xact_lock");
+    expect(client.queries[0]?.values).toEqual(["user-1"]);
+    expect(client.queries[1]?.text).toContain("INSERT INTO financial_signals");
+    expect(client.queries[1]?.text).toContain("ON CONFLICT (owner_id, signal_id)");
+    expect(client.queries[1]?.text).toContain("financial_signals.status = 'resolved'");
+    expect(client.queries[1]?.values[0]).toBe("user-1");
+    expect(client.queries[1]?.values[6]).toBe(JSON.stringify(["forecast.liquidityRisk"]));
     expect(client.queries[2]?.text).toContain("WHERE owner_id = $1");
+    expect(client.queries[2]?.text).toContain("status IN ('active', 'acknowledged')");
+    expect(client.queries[2]?.values).toEqual(["user-1", ["liquidity-critical"]]);
+    expect(client.queries[3]?.text).toContain("WHERE owner_id = $1");
   });
 
   it("acknowledges a signal only within the specified owner's scope", async () => {
