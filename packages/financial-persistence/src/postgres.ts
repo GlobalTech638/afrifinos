@@ -49,6 +49,9 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
   }
   async reconcileFinancialSignals(ownerId: string, signals: readonly FinancialSignalInput[]): Promise<readonly StoredFinancialSignal[]> {
     return this.client.transaction(async (tx) => {
+      // Serialize snapshot reconciliation per owner so concurrent requests cannot
+      // resolve a signal while another request is refreshing the same signal set.
+      await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [ownerId]);
       for (const signal of signals) {
         await tx.query(`INSERT INTO financial_signals
           (owner_id, signal_id, category, severity, status, title, statement, evidence_ids, first_detected_at, last_detected_at, updated_at)
