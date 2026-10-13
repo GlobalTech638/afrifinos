@@ -54,9 +54,20 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
       // that started earlier from committing after a newer snapshot.
       await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [ownerId]);
       const snapshotAt = reconciledAt ?? signals.reduce<string | undefined>(
-        (latest, signal) => !latest || signal.detectedAt > latest ? signal.detectedAt : latest,
+        (latest, signal) => {
+          if (!latest) return signal.detectedAt;
+          const candidateTime = Date.parse(signal.detectedAt);
+          const latestTime = Date.parse(latest);
+          if (!Number.isFinite(candidateTime) || !Number.isFinite(latestTime)) {
+            throw new Error("Financial signal timestamps must be valid ISO-compatible timestamps");
+          }
+          return candidateTime > latestTime ? signal.detectedAt : latest;
+        },
         undefined,
       ) ?? new Date().toISOString();
+      if (!Number.isFinite(Date.parse(snapshotAt))) {
+        throw new Error("Financial signal reconciliation timestamp must be valid");
+      }
       const watermark = await tx.query<{ owner_id: string }>(`INSERT INTO financial_signal_reconciliations (owner_id, reconciled_at)
         VALUES ($1, $2)
         ON CONFLICT (owner_id) DO UPDATE SET reconciled_at = EXCLUDED.reconciled_at
