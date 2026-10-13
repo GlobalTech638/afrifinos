@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { HttpException, Inject, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import type { CurrencyCode } from "@afrifinos/financial-domain";
 import type { FinancialRepository, StoredFinancialSignal } from "@afrifinos/financial-persistence";
 import {
@@ -113,8 +113,10 @@ export class ApiFinancialService {
         summary, temporal, merchants, trends, categoryTrends, spendingDrivers, forecast, facts, signals, generatedAt,
       });
     } catch (error) {
-      if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException(error instanceof Error ? error.message : "Unable to build financial intelligence");
+      if (error instanceof HttpException) throw error;
+      // Do not misclassify database or engine failures as client errors, or expose
+      // internal exception details in the public API response.
+      throw new InternalServerErrorException("Unable to build financial intelligence");
     }
   }
 }
