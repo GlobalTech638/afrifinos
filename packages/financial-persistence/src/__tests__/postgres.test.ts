@@ -11,7 +11,7 @@ function createClient(existingWatermark?: string): SqlClient & { queries: Array<
       let rows: Row[] = [];
       if (text.includes("INSERT INTO financial_signal_reconciliations")) {
         const incoming = String(values[1]);
-        if (watermark === undefined || incoming > watermark) {
+        if (watermark === undefined || Date.parse(incoming) > Date.parse(watermark)) {
           watermark = incoming;
           rows = [{ owner_id: String(values[0]) } as Row];
         }
@@ -123,6 +123,21 @@ describe("PostgresFinancialRepository", () => {
 
     expect(client.queries).toHaveLength(3);
     expect(client.queries[1]?.text).toContain("WHERE financial_signal_reconciliations.reconciled_at < EXCLUDED.reconciled_at");
+    expect(client.queries[2]?.text).toContain("SELECT * FROM financial_signals WHERE owner_id = $1");
+    expect(client.queries.some((query) => query.text.includes("SET status = 'resolved'"))).toBe(false);
+  });
+
+  it("compares watermark timestamps as instants across timezone offsets", async () => {
+    const client = createClient("2026-09-17T13:00:00.000+03:00");
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.reconcileFinancialSignals(
+      "user-7",
+      [],
+      "2026-09-17T10:00:00.000Z",
+    )).resolves.toEqual([]);
+
+    expect(client.queries).toHaveLength(3);
     expect(client.queries[2]?.text).toContain("SELECT * FROM financial_signals WHERE owner_id = $1");
     expect(client.queries.some((query) => query.text.includes("SET status = 'resolved'"))).toBe(false);
   });
