@@ -218,7 +218,7 @@ describe("PostgresFinancialRepository", () => {
       detectedAt: "not-a-timestamp",
     }])).rejects.toThrow("Financial signal timestamps must be valid ISO-compatible timestamps");
 
-    expect(client.queries).toHaveLength(1);
+    expect(client.queries).toHaveLength(0);
     expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signal_reconciliations"))).toBe(false);
     expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signals"))).toBe(false);
   });
