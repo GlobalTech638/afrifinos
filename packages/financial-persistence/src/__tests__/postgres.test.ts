@@ -127,6 +127,26 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries.some((query) => query.text.includes("SET status = 'resolved'"))).toBe(false);
   });
 
+  it("rejects invalid signal detection timestamps before writing signal rows", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.reconcileFinancialSignals("user-9", [{
+      id: "bad-time",
+      category: "forecast",
+      severity: "warning",
+      status: "active",
+      title: "Invalid timestamp",
+      statement: "Timestamp should be rejected.",
+      evidenceIds: [],
+      detectedAt: "not-a-timestamp",
+    }])).rejects.toThrow("Financial signal timestamps must be valid ISO-compatible timestamps");
+
+    expect(client.queries).toHaveLength(1);
+    expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signal_reconciliations"))).toBe(false);
+    expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signals"))).toBe(false);
+  });
+
   it("rejects invalid reconciliation timestamps before issuing watermark SQL", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
