@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { NotFoundException } from "@nestjs/common";
 import type { FinancialRepository, StoredFinancialSignal } from "@afrifinos/financial-persistence";
 import { ApiFinancialService } from "./api-financial.service.js";
 
@@ -43,6 +44,14 @@ describe("ApiFinancialService signal responses", () => {
     }]);
     expect(result[0]).not.toHaveProperty("ownerId");
     expect(result[0]).not.toHaveProperty("signalId");
+  });
+
+  it("returns not found when a signal is absent or already resolved", async () => {
+    const acknowledgeFinancialSignal = vi.fn().mockResolvedValue(null);
+    const service = serviceWith({ acknowledgeFinancialSignal });
+
+    await expect(service.acknowledgeSignal("owner-1", "missing-signal")).rejects.toBeInstanceOf(NotFoundException);
+    expect(acknowledgeFinancialSignal).toHaveBeenCalledWith("owner-1", "missing-signal");
   });
 
   it("returns the same public response shape after acknowledgement", async () => {
