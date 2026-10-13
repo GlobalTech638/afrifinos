@@ -53,6 +53,19 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
       // the latest committed reconciliation. A lock alone cannot prevent stale work
       // that started earlier from committing after a newer snapshot.
       await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [ownerId]);
+      if (!ownerId.trim()) {
+        throw new Error("Financial signal ownerId cannot be empty");
+      }
+      const signalIds = new Set<string>();
+      for (const signal of signals) {
+        if (!signal.id.trim()) {
+          throw new Error("Financial signal id cannot be empty");
+        }
+        if (signalIds.has(signal.id)) {
+          throw new Error(`Duplicate financial signal id: ${signal.id}`);
+        }
+        signalIds.add(signal.id);
+      }
       const timestampValues = [reconciledAt, ...signals.map((signal) => signal.detectedAt)]
         .filter((value): value is string => value !== undefined);
       for (const timestamp of timestampValues) {
