@@ -74,11 +74,15 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
     });
   }
   async acknowledgeFinancialSignal(ownerId: string, signalId: string): Promise<StoredFinancialSignal | null> {
-    const result = await this.client.query<Record<string, unknown>>(`UPDATE financial_signals
-      SET status = 'acknowledged', acknowledged_at = COALESCE(acknowledged_at, now()), updated_at = now()
-      WHERE owner_id = $1 AND signal_id = $2 AND status IN ('active', 'acknowledged')
-      RETURNING *`, [ownerId, signalId]);
-    return result.rows[0] ? this.signalFromRow(result.rows[0]) : null;
+    return this.client.transaction(async (tx) => {
+      // Share the reconciliation lock so acknowledgement cannot race a snapshot refresh.
+      await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [ownerId]);
+      const result = await tx.query<Record<string, unknown>>(`UPDATE financial_signals
+        SET status = 'acknowledged', acknowledged_at = COALESCE(acknowledged_at, now()), updated_at = now()
+        WHERE owner_id = $1 AND signal_id = $2 AND status IN ('active', 'acknowledged')
+        RETURNING *`, [ownerId, signalId]);
+      return result.rows[0] ? this.signalFromRow(result.rows[0]) : null;
+    });
   }
   async getFinancialSignals(ownerId: string, status?: PersistedSignalStatus): Promise<readonly StoredFinancialSignal[]> {
     const result = await this.client.query<Record<string, unknown>>(`SELECT * FROM financial_signals
