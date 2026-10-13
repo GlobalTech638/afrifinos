@@ -47,11 +47,28 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
       ...(row.resolved_at ? { resolvedAt: new Date(String(row.resolved_at)).toISOString() } : {}),
     };
   }
-  async reconcileFinancialSignals(ownerId: string, signals: readonly FinancialSignalInput[]): Promise<readonly StoredFinancialSignal[]> {
+  async reconcileFinancialSignals(ownerId: string, signals: readonly FinancialSignalInput[], reconciledAt?: string): Promise<readonly StoredFinancialSignal[]> {
     return this.client.transaction(async (tx) => {
-      // Serialize snapshot reconciliation per owner so concurrent requests cannot
-      // resolve a signal while another request is refreshing the same signal set.
+      // Serialize snapshot reconciliation per owner, then reject snapshots older than
+      // the latest committed reconciliation. A lock alone cannot prevent stale work
+      // that started earlier from committing after a newer snapshot.
       await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [ownerId]);
+      const snapshotAt = reconciledAt ?? signals.reduce<string | undefined>(
+        (latest, signal) => !latest || signal.detectedAt > latest ? signal.detectedAt : latest,
+        undefined,
+      ) ?? new Date().toISOString();
+      const watermark = await tx.query<{ owner_id: string }>(`INSERT INTO financial_signal_reconciliations (owner_id, reconciled_at)
+        VALUES ($1, $2)
+        ON CONFLICT (owner_id) DO UPDATE SET reconciled_at = EXCLUDED.reconciled_at
+        WHERE financial_signal_reconciliations.reconciled_at <= EXCLUDED.reconciled_at
+        RETURNING owner_id`, [ownerId, snapshotAt]);
+      if (!watermark.rows.length) {
+        const current = await tx.query<Record<string, unknown>>(
+          "SELECT * FROM financial_signals WHERE owner_id = $1 ORDER BY last_detected_at DESC",
+          [ownerId],
+        );
+        return current.rows.map((row) => this.signalFromRow(row));
+      }
       for (const signal of signals) {
         await tx.query(`INSERT INTO financial_signals
           (owner_id, signal_id, category, severity, status, title, statement, evidence_ids, first_detected_at, last_detected_at, updated_at)
