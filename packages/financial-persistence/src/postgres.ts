@@ -113,6 +113,12 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
     });
   }
   async acknowledgeFinancialSignal(ownerId: string, signalId: string): Promise<StoredFinancialSignal | null> {
+    if (!ownerId.trim()) {
+      throw new Error("Financial signal ownerId cannot be empty");
+    }
+    if (!signalId.trim()) {
+      throw new Error("Financial signal id cannot be empty");
+    }
     return this.client.transaction(async (tx) => {
       // Share the reconciliation lock so acknowledgement cannot race a snapshot refresh.
       await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [ownerId]);
