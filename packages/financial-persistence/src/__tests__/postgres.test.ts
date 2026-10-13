@@ -43,26 +43,30 @@ const entries: readonly LedgerEntry[] = [
 
 describe("PostgresFinancialRepository", () => {
   it("rolls back signal watermark and row writes when reconciliation fails", async () => {
-    const client = createClient();
-    const originalTransaction = client.transaction.bind(client);
     let rolledBack = false;
-    client.transaction = async <T>(work: (tx: SqlClient) => Promise<T>): Promise<T> => {
-      try {
-        return await originalTransaction(work);
-      } catch (error) {
-        rolledBack = true;
-        throw error;
-      }
-    };
-    const originalQuery = client.query.bind(client);
-    client.query = async <Row extends Record<string, unknown> = Record<string, unknown>>(
-      text: string,
-      values: readonly unknown[] = [],
-    ) => {
-      if (text.includes("INSERT INTO financial_signals")) {
-        throw new Error("simulated signal row write failure");
-      }
-      return originalQuery<Row>(text, values);
+    const client = {
+      ...createClient(),
+      async transaction<T>(work: (tx: SqlClient) => Promise<T>): Promise<T> {
+        const tx = {
+          ...this,
+          async query<Row extends Record<string, unknown> = Record<string, unknown>>(
+            text: string,
+            values: readonly unknown[] = [],
+          ) {
+            if (text.includes("INSERT INTO financial_signals")) {
+              throw new Error("simulated signal row write failure");
+            }
+            return this.queryBase<Row>(text, values);
+          },
+          queryBase: createClient().query,
+        } as unknown as SqlClient;
+        try {
+          return await work(tx);
+        } catch (error) {
+          rolledBack = true;
+          throw error;
+        }
+      },
     };
     const repository = new PostgresFinancialRepository(client);
 
