@@ -22,6 +22,14 @@ describe("FinancialSignalsController", () => {
     expect(getSignals).not.toHaveBeenCalled();
   });
 
+  it("rejects an explicitly empty lifecycle filter", async () => {
+    const getSignals = vi.fn();
+    const controller = new FinancialSignalsController({ getSignals } as unknown as ApiFinancialService);
+
+    await expect(controller.list("owner-1", "")).rejects.toBeInstanceOf(BadRequestException);
+    expect(getSignals).not.toHaveBeenCalled();
+  });
+
   it("acknowledges only through the financial service with the authenticated owner", async () => {
     const acknowledgeSignal = vi.fn().mockResolvedValue({ signalId: "liquidity-critical", status: "acknowledged" });
     const controller = new FinancialSignalsController({ acknowledgeSignal } as unknown as ApiFinancialService);
