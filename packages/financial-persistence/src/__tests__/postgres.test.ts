@@ -116,7 +116,7 @@ describe("PostgresFinancialRepository", () => {
   });
 
   it("rejects a reconciliation with the same watermark timestamp", async () => {
-    const client = createClient(false);
+    const client = createClient("2026-09-17T10:00:00.000Z");
     const repository = new PostgresFinancialRepository(client);
 
     await expect(repository.reconcileFinancialSignals("user-6", [], "2026-09-17T10:00:00.000Z")).resolves.toEqual([]);
@@ -128,7 +128,7 @@ describe("PostgresFinancialRepository", () => {
   });
 
   it("does not apply a stale snapshot after a newer reconciliation", async () => {
-    const client = createClient(false);
+    const client = createClient("2026-09-15T10:00:00.000Z");
     const repository = new PostgresFinancialRepository(client);
     await expect(repository.reconcileFinancialSignals("user-4", [{
       id: "old-signal", category: "forecast", severity: "warning", status: "active",
