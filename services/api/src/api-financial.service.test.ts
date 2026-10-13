@@ -33,6 +33,15 @@ describe("ApiFinancialService signal responses", () => {
     });
   });
 
+  it("preserves intentional HTTP exceptions from financial engine validation", async () => {
+    const { BadRequestException } = await import("@nestjs/common");
+    const failure = new BadRequestException("Invalid financial input");
+    const getAccounts = vi.fn().mockRejectedValue(failure);
+    const service = serviceWith({ getAccounts });
+
+    await expect(service.getIntelligence("owner-1", "KES")).rejects.toBe(failure);
+  });
+
   it("returns public signal fields without exposing persistence owner identifiers", async () => {
     const getFinancialSignals = vi.fn().mockResolvedValue([storedSignal]);
     const service = serviceWith({ getFinancialSignals });
