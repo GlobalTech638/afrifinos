@@ -60,7 +60,7 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
       const watermark = await tx.query<{ owner_id: string }>(`INSERT INTO financial_signal_reconciliations (owner_id, reconciled_at)
         VALUES ($1, $2)
         ON CONFLICT (owner_id) DO UPDATE SET reconciled_at = EXCLUDED.reconciled_at
-        WHERE financial_signal_reconciliations.reconciled_at <= EXCLUDED.reconciled_at
+        WHERE financial_signal_reconciliations.reconciled_at < EXCLUDED.reconciled_at
         RETURNING owner_id`, [ownerId, snapshotAt]);
       if (!watermark.rows.length) {
         const current = await tx.query<Record<string, unknown>>(
