@@ -264,6 +264,18 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries.some((query) => query.text.includes("SET status = 'resolved'")).toBe(false);
   });
 
+  it("rejects empty acknowledgement identifiers before opening a transaction", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.acknowledgeFinancialSignal("  ", "signal-1"))
+      .rejects.toThrow("Financial signal ownerId cannot be empty");
+    await expect(repository.acknowledgeFinancialSignal("user-1", "  "))
+      .rejects.toThrow("Financial signal id cannot be empty");
+
+    expect(client.queries).toHaveLength(0);
+  });
+
   it("acknowledges a signal only within the specified owner's scope", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
