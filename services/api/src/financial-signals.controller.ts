@@ -9,12 +9,12 @@ export class FinancialSignalsController {
   @Get()
   async list(
     @OwnerId() ownerId: string,
-    @Query("status") status?: "active" | "acknowledged" | "resolved",
+    @Query("status") status?: string,
   ) {
     if (status && !["active", "acknowledged", "resolved"].includes(status)) {
       throw new BadRequestException("status must be active, acknowledged, or resolved");
     }
-    return this.financial.getSignals(ownerId, status);
+    return this.financial.getSignals(ownerId, status as "active" | "acknowledged" | "resolved" | undefined);
   }
 
   @Post(":signalId/acknowledge")
