@@ -75,7 +75,7 @@ describe("PostgresFinancialRepository", () => {
       severity: "warning",
       status: "active",
       title: "Write failure",
-      statement: "This reconciliation must roll back.",
+      statement: "This reconciliation must stop after the failed write.",
       evidenceIds: [],
       detectedAt: "2026-09-19T10:00:00.000Z",
     }])).rejects.toThrow("simulated signal row write failure");
@@ -188,7 +188,7 @@ describe("PostgresFinancialRepository", () => {
     await expect(repository.reconcileFinancialSignals("user-10", [duplicate, duplicate]))
       .rejects.toThrow("Duplicate financial signal id: duplicate");
 
-    expect(client.queries).toHaveLength(1);
+    expect(client.queries).toHaveLength(0);
     expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signal_reconciliations"))).toBe(false);
     expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signals"))).toBe(false);
   });
@@ -228,10 +228,9 @@ describe("PostgresFinancialRepository", () => {
     const repository = new PostgresFinancialRepository(client);
 
     await expect(repository.reconcileFinancialSignals("user-8", [], "not-a-timestamp"))
-      .rejects.toThrow("Financial signal reconciliation timestamp must be valid");
+      .rejects.toThrow("Financial signal timestamps must be valid ISO-compatible timestamps");
 
-    expect(client.queries).toHaveLength(1);
-    expect(client.queries[0]?.text).toContain("pg_advisory_xact_lock");
+    expect(client.queries).toHaveLength(0);
     expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signal_reconciliations"))).toBe(false);
   });
 
