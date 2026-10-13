@@ -82,9 +82,12 @@ describe("PostgresFinancialRepository", () => {
 
     await expect(repository.acknowledgeFinancialSignal("user-1", "liquidity-critical")).resolves.toBeNull();
 
-    expect(client.queries[0]?.text).toContain("WHERE owner_id = $1 AND signal_id = $2");
-    expect(client.queries[0]?.text).toContain("status IN ('active', 'acknowledged')");
-    expect(client.queries[0]?.values).toEqual(["user-1", "liquidity-critical"]);
+    expect(client.queries).toHaveLength(2);
+    expect(client.queries[0]?.text).toContain("pg_advisory_xact_lock");
+    expect(client.queries[0]?.values).toEqual(["user-1"]);
+    expect(client.queries[1]?.text).toContain("WHERE owner_id = $1 AND signal_id = $2");
+    expect(client.queries[1]?.text).toContain("status IN ('active', 'acknowledged')");
+    expect(client.queries[1]?.values).toEqual(["user-1", "liquidity-critical"]);
   });
 
   it("filters signal history by authenticated owner and optional status", async () => {
