@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import { PostgresFinancialRepository, type SqlClient } from "../postgres.js";
 import type { Transaction, LedgerEntry } from "@afrifinos/financial-domain";
 
-function createClient(existingWatermark?: string): SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } {
+function createClient(existingWatermark?: string, failSignalInsert = false): SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } {
   let watermark = existingWatermark;
   const client = {
     queries: [] as Array<{ text: string; values: readonly unknown[] }>,
     async query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values: readonly unknown[] = []) {
       client.queries.push({ text, values });
+      if (failSignalInsert && text.includes("INSERT INTO financial_signals")) {
+        throw new Error("simulated signal row write failure");
+      }
       let rows: Row[] = [];
       if (text.includes("INSERT INTO financial_signal_reconciliations")) {
         const incoming = String(values[1]);
@@ -19,7 +22,11 @@ function createClient(existingWatermark?: string): SqlClient & { queries: Array<
       return { rows };
     },
     async transaction<T>(work: (tx: SqlClient) => Promise<T>): Promise<T> {
-      return work(client);
+      try {
+        return await work(client);
+      } catch (error) {
+        throw error;
+      }
     },
   };
   return client;
@@ -44,24 +51,16 @@ const entries: readonly LedgerEntry[] = [
 describe("PostgresFinancialRepository", () => {
   it("rolls back signal watermark and row writes when reconciliation fails", async () => {
     let rolledBack = false;
+    const baseClient = createClient(undefined, true);
     const client = {
-      ...createClient(),
+      ...baseClient,
+      queries: baseClient.queries,
+      async query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values: readonly unknown[] = []) {
+        return baseClient.query<Row>(text, values);
+      },
       async transaction<T>(work: (tx: SqlClient) => Promise<T>): Promise<T> {
-        const tx = {
-          ...this,
-          async query<Row extends Record<string, unknown> = Record<string, unknown>>(
-            text: string,
-            values: readonly unknown[] = [],
-          ) {
-            if (text.includes("INSERT INTO financial_signals")) {
-              throw new Error("simulated signal row write failure");
-            }
-            return this.queryBase<Row>(text, values);
-          },
-          queryBase: createClient().query,
-        } as unknown as SqlClient;
         try {
-          return await work(tx);
+          return await work(this as unknown as SqlClient);
         } catch (error) {
           rolledBack = true;
           throw error;
