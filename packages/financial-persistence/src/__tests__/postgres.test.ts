@@ -42,6 +42,45 @@ const entries: readonly LedgerEntry[] = [
 ];
 
 describe("PostgresFinancialRepository", () => {
+  it("rolls back signal watermark and row writes when reconciliation fails", async () => {
+    const client = createClient();
+    const originalTransaction = client.transaction.bind(client);
+    let rolledBack = false;
+    client.transaction = async <T>(work: (tx: SqlClient) => Promise<T>): Promise<T> => {
+      try {
+        return await originalTransaction(work);
+      } catch (error) {
+        rolledBack = true;
+        throw error;
+      }
+    };
+    const originalQuery = client.query.bind(client);
+    client.query = async <Row extends Record<string, unknown> = Record<string, unknown>>(
+      text: string,
+      values: readonly unknown[] = [],
+    ) => {
+      if (text.includes("INSERT INTO financial_signals")) {
+        throw new Error("simulated signal row write failure");
+      }
+      return originalQuery<Row>(text, values);
+    };
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.reconcileFinancialSignals("user-11", [{
+      id: "write-failure",
+      category: "forecast",
+      severity: "warning",
+      status: "active",
+      title: "Write failure",
+      statement: "This reconciliation must roll back.",
+      evidenceIds: [],
+      detectedAt: "2026-09-19T10:00:00.000Z",
+    }])).rejects.toThrow("simulated signal row write failure");
+
+    expect(rolledBack).toBe(true);
+    expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signal_reconciliations"))).toBe(true);
+  });
+
   it("persists transaction and ledger entries in one transaction", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
