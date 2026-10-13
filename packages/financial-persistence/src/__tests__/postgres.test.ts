@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import { PostgresFinancialRepository, type SqlClient } from "../postgres.js";
 import type { Transaction, LedgerEntry } from "@afrifinos/financial-domain";
 
-function createClient(): SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } {
+function createClient(acceptWatermark = true): SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } {
   const client = {
     queries: [] as Array<{ text: string; values: readonly unknown[] }>,
     async query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values: readonly unknown[] = []) {
       client.queries.push({ text, values });
-      return { rows: [] as Row[] };
+      const rows = text.includes("INSERT INTO financial_signal_reconciliations") && acceptWatermark
+        ? [{ owner_id: String(values[0]) } as Row]
+        : [];
+      return { rows };
     },
     async transaction<T>(work: (tx: SqlClient) => Promise<T>): Promise<T> {
       return work(client);
@@ -50,46 +53,51 @@ describe("PostgresFinancialRepository", () => {
   it("reconciles signal lifecycle within an owner-scoped transaction", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
-
     await repository.reconcileFinancialSignals("user-1", [{
-      id: "liquidity-critical",
-      category: "forecast",
-      severity: "critical",
-      status: "active",
-      title: "Critical liquidity risk",
-      statement: "Projected liquidity reaches the safety threshold.",
-      evidenceIds: ["forecast.liquidityRisk"],
-      detectedAt: "2026-09-15T10:00:00.000Z",
+      id: "liquidity-critical", category: "forecast", severity: "critical", status: "active",
+      title: "Critical liquidity risk", statement: "Projected liquidity reaches the safety threshold.",
+      evidenceIds: ["forecast.liquidityRisk"], detectedAt: "2026-09-15T10:00:00.000Z",
     }]);
-
-    expect(client.queries).toHaveLength(4);
+    expect(client.queries).toHaveLength(5);
     expect(client.queries[0]?.text).toContain("pg_advisory_xact_lock");
-    expect(client.queries[0]?.values).toEqual(["user-1"]);
-    expect(client.queries[1]?.text).toContain("INSERT INTO financial_signals");
-    expect(client.queries[1]?.text).toContain("ON CONFLICT (owner_id, signal_id)");
-    expect(client.queries[1]?.text).toContain("financial_signals.status = 'resolved'");
-    expect(client.queries[1]?.values[0]).toBe("user-1");
-    expect(client.queries[1]?.values[6]).toBe(JSON.stringify(["forecast.liquidityRisk"]));
-    expect(client.queries[2]?.text).toContain("WHERE owner_id = $1");
-    expect(client.queries[2]?.text).toContain("status IN ('active', 'acknowledged')");
-    expect(client.queries[2]?.values).toEqual(["user-1", ["liquidity-critical"]]);
-    expect(client.queries[3]?.text).toContain("WHERE owner_id = $1");
+    expect(client.queries[1]?.text).toContain("INSERT INTO financial_signal_reconciliations");
+    expect(client.queries[1]?.values).toEqual(["user-1", "2026-09-15T10:00:00.000Z"]);
+    expect(client.queries[2]?.text).toContain("INSERT INTO financial_signals");
+    expect(client.queries[2]?.text).toContain("ON CONFLICT (owner_id, signal_id)");
+    expect(client.queries[2]?.text).toContain("financial_signals.status = 'resolved'");
+    expect(client.queries[2]?.values[0]).toBe("user-1");
+    expect(client.queries[2]?.values[6]).toBe(JSON.stringify(["forecast.liquidityRisk"]));
+    expect(client.queries[3]?.text).toContain("status IN ('active', 'acknowledged')");
+    expect(client.queries[3]?.values).toEqual(["user-1", ["liquidity-critical"]]);
+    expect(client.queries[4]?.text).toContain("SELECT * FROM financial_signals WHERE owner_id = $1");
   });
 
   it("resolves missing signals while retaining owner-scoped history", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
-
     await repository.reconcileFinancialSignals("user-3", []);
-
-    expect(client.queries).toHaveLength(3);
+    expect(client.queries).toHaveLength(4);
     expect(client.queries[0]?.text).toContain("pg_advisory_xact_lock");
-    expect(client.queries[1]?.text).toContain("SET status = 'resolved'");
-    expect(client.queries[1]?.text).toContain("WHERE owner_id = $1");
-    expect(client.queries[1]?.text).toContain("status IN ('active', 'acknowledged')");
-    expect(client.queries[1]?.values).toEqual(["user-3", []]);
+    expect(client.queries[1]?.text).toContain("INSERT INTO financial_signal_reconciliations");
+    expect(client.queries[2]?.text).toContain("SET status = 'resolved'");
+    expect(client.queries[2]?.values).toEqual(["user-3", []]);
+    expect(client.queries[3]?.text).toContain("SELECT * FROM financial_signals WHERE owner_id = $1");
+    expect(client.queries[3]?.values).toEqual(["user-3"]);
+  });
+
+  it("does not apply a stale snapshot after a newer reconciliation", async () => {
+    const client = createClient(false);
+    const repository = new PostgresFinancialRepository(client);
+    await expect(repository.reconcileFinancialSignals("user-4", [{
+      id: "old-signal", category: "forecast", severity: "warning", status: "active",
+      title: "Old snapshot", statement: "This snapshot is stale.", evidenceIds: [],
+      detectedAt: "2026-09-14T10:00:00.000Z",
+    }], "2026-09-14T10:00:00.000Z")).resolves.toEqual([]);
+    expect(client.queries).toHaveLength(3);
+    expect(client.queries[1]?.text).toContain("WHERE financial_signal_reconciliations.reconciled_at <= EXCLUDED.reconciled_at");
     expect(client.queries[2]?.text).toContain("SELECT * FROM financial_signals WHERE owner_id = $1");
-    expect(client.queries[2]?.values).toEqual(["user-3"]);
+    expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signals"))).toBe(false);
+    expect(client.queries.some((query) => query.text.includes("SET status = 'resolved'")).toBe(false);
   });
 
   it("acknowledges a signal only within the specified owner's scope", async () => {
