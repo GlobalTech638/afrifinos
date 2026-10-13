@@ -87,6 +87,19 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries[0]?.values).toEqual(["user-1", "liquidity-critical"]);
   });
 
+  it("filters signal history by authenticated owner and optional status", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.getFinancialSignals("user-2", "resolved")).resolves.toEqual([]);
+
+    expect(client.queries).toHaveLength(1);
+    expect(client.queries[0]?.text).toContain("WHERE owner_id = $1");
+    expect(client.queries[0]?.text).toContain("status = $2");
+    expect(client.queries[0]?.values).toEqual(["user-2", "resolved"]);
+    expect(client.queries[0]?.text).toContain("ORDER BY last_detected_at DESC");
+  });
+
   it("does not issue an account query for an empty ledger account set", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
