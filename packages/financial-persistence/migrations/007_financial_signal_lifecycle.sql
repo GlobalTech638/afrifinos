@@ -19,3 +19,6 @@ CREATE TABLE IF NOT EXISTS financial_signals (
 
 CREATE INDEX IF NOT EXISTS financial_signals_owner_status_updated_idx
   ON financial_signals(owner_id, status, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS financial_signals_owner_last_detected_idx
+  ON financial_signals(owner_id, last_detected_at DESC);
