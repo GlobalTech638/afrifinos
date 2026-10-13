@@ -72,6 +72,30 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries[4]?.text).toContain("SELECT * FROM financial_signals WHERE owner_id = $1");
   });
 
+  it("preserves acknowledgement and resets a resolved signal when it reappears", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await repository.reconcileFinancialSignals("user-5", [{
+      id: "liquidity-critical",
+      category: "forecast",
+      severity: "critical",
+      status: "active",
+      title: "Critical liquidity risk",
+      statement: "Projected liquidity is below the safety threshold.",
+      evidenceIds: ["forecast.liquidityRisk"],
+      detectedAt: "2026-09-16T10:00:00.000Z",
+    }], "2026-09-16T10:00:00.000Z");
+
+    const upsert = client.queries.find((query) => query.text.includes("INSERT INTO financial_signals"));
+    expect(upsert).toBeDefined();
+    expect(upsert?.text).toContain("first_detected_at = CASE WHEN financial_signals.status = 'resolved' THEN EXCLUDED.first_detected_at ELSE financial_signals.first_detected_at END");
+    expect(upsert?.text).toContain("status = CASE WHEN financial_signals.status = 'acknowledged' THEN 'acknowledged' ELSE 'active' END");
+    expect(upsert?.text).toContain("acknowledged_at = CASE WHEN financial_signals.status = 'acknowledged' THEN financial_signals.acknowledged_at ELSE NULL END");
+    expect(upsert?.text).toContain("resolved_at = NULL");
+    expect(upsert?.values[7]).toBe("2026-09-16T10:00:00.000Z");
+  });
+
   it("resolves missing signals while retaining owner-scoped history", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
