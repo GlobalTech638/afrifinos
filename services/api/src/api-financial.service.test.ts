@@ -22,6 +22,17 @@ describe("ApiFinancialService signal responses", () => {
     return new ApiFinancialService(repository as FinancialRepository);
   }
 
+  it("does not expose persistence failures as client bad requests", async () => {
+    const failure = new Error("database password or internal SQL details");
+    const getAccounts = vi.fn().mockRejectedValue(failure);
+    const service = serviceWith({ getAccounts });
+
+    await expect(service.getIntelligence("owner-1", "KES")).rejects.toMatchObject({
+      status: 500,
+      response: { statusCode: 500, message: "Unable to build financial intelligence" },
+    });
+  });
+
   it("returns public signal fields without exposing persistence owner identifiers", async () => {
     const getFinancialSignals = vi.fn().mockResolvedValue([storedSignal]);
     const service = serviceWith({ getFinancialSignals });
