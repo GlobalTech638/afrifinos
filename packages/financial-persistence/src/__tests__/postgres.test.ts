@@ -109,6 +109,18 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries[3]?.values).toEqual(["user-3"]);
   });
 
+  it("rejects a reconciliation with the same watermark timestamp", async () => {
+    const client = createClient(false);
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.reconcileFinancialSignals("user-6", [], "2026-09-17T10:00:00.000Z")).resolves.toEqual([]);
+
+    expect(client.queries).toHaveLength(3);
+    expect(client.queries[1]?.text).toContain("WHERE financial_signal_reconciliations.reconciled_at < EXCLUDED.reconciled_at");
+    expect(client.queries[2]?.text).toContain("SELECT * FROM financial_signals WHERE owner_id = $1");
+    expect(client.queries.some((query) => query.text.includes("SET status = 'resolved'"))).toBe(false);
+  });
+
   it("does not apply a stale snapshot after a newer reconciliation", async () => {
     const client = createClient(false);
     const repository = new PostgresFinancialRepository(client);
