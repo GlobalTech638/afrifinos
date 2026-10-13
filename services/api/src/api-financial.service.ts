@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { CurrencyCode } from "@afrifinos/financial-domain";
-import type { FinancialRepository } from "@afrifinos/financial-persistence";
+import type { FinancialRepository, StoredFinancialSignal } from "@afrifinos/financial-persistence";
 import {
   assessAffordability,
   buildFinancialSummary,
@@ -38,11 +38,29 @@ export class ApiFinancialService {
   async acknowledgeSignal(ownerId: string, signalId: string) {
     const signal = await this.repository.acknowledgeFinancialSignal(ownerId, signalId);
     if (!signal) throw new NotFoundException("Financial signal not found or already resolved");
-    return signal;
+    return this.toSignalResponse(signal);
   }
 
   async getSignals(ownerId: string, status?: "active" | "acknowledged" | "resolved") {
-    return this.repository.getFinancialSignals(ownerId, status);
+    const signals = await this.repository.getFinancialSignals(ownerId, status);
+    return signals.map((signal) => this.toSignalResponse(signal));
+  }
+
+  private toSignalResponse(signal: StoredFinancialSignal) {
+    return {
+      id: signal.signalId,
+      category: signal.category,
+      severity: signal.severity,
+      status: signal.status,
+      title: signal.title,
+      statement: signal.statement,
+      evidenceIds: signal.evidenceIds,
+      detectedAt: signal.lastDetectedAt,
+      firstDetectedAt: signal.firstDetectedAt,
+      lastDetectedAt: signal.lastDetectedAt,
+      ...(signal.acknowledgedAt ? { acknowledgedAt: signal.acknowledgedAt } : {}),
+      ...(signal.resolvedAt ? { resolvedAt: signal.resolvedAt } : {}),
+    };
   }
 
   private async buildSnapshot(ownerId: string, currency: CurrencyCode) {
