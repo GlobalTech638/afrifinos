@@ -127,6 +127,38 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries.some((query) => query.text.includes("SET status = 'resolved'"))).toBe(false);
   });
 
+  it("rejects duplicate signal identifiers before writing reconciliation state", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+    const duplicate = {
+      id: "duplicate",
+      category: "forecast",
+      severity: "warning" as const,
+      status: "active" as const,
+      title: "Duplicate signal",
+      statement: "Signal identifiers must be unique within a snapshot.",
+      evidenceIds: [],
+      detectedAt: "2026-09-18T10:00:00.000Z",
+    };
+
+    await expect(repository.reconcileFinancialSignals("user-10", [duplicate, duplicate]))
+      .rejects.toThrow("Duplicate financial signal id: duplicate");
+
+    expect(client.queries).toHaveLength(1);
+    expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signal_reconciliations"))).toBe(false);
+    expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signals"))).toBe(false);
+  });
+
+  it("rejects an empty owner identifier before taking a reconciliation lock", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.reconcileFinancialSignals("  ", []))
+      .rejects.toThrow("Financial signal ownerId cannot be empty");
+
+    expect(client.queries).toHaveLength(0);
+  });
+
   it("rejects invalid signal detection timestamps before writing signal rows", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
