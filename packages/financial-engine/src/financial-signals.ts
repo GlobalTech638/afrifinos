@@ -28,8 +28,10 @@ export function deriveFinancialSignals(snapshot: FinancialIntelligenceSnapshot):
     });
   }
 
-  for (const driver of snapshot.spendingDrivers.slice(0, 5)) {
-    if (driver.direction !== "increase" || driver.contributionRatio === null || driver.contributionRatio < 0.25) continue;
+  const materialIncreases = snapshot.spendingDrivers.filter(
+    (driver) => driver.direction === "increase" && driver.contributionRatio !== null && driver.contributionRatio >= 0.25,
+  );
+  for (const driver of materialIncreases.slice(0, 5)) {
     signals.push({
       id: `spending-driver-${driver.categoryId}`,
       category: "cash_flow",
