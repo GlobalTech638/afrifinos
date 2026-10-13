@@ -49,8 +49,8 @@ const entries: readonly LedgerEntry[] = [
 ];
 
 describe("PostgresFinancialRepository", () => {
-  it("rolls back signal watermark and row writes when reconciliation fails", async () => {
-    let rolledBack = false;
+  it("propagates signal row failures and skips subsequent reconciliation writes", async () => {
+    let transactionRejected = false;
     const baseClient = createClient(undefined, true);
     const client = {
       ...baseClient,
@@ -62,7 +62,7 @@ describe("PostgresFinancialRepository", () => {
         try {
           return await work(this as unknown as SqlClient);
         } catch (error) {
-          rolledBack = true;
+          transactionRejected = true;
           throw error;
         }
       },
@@ -80,8 +80,10 @@ describe("PostgresFinancialRepository", () => {
       detectedAt: "2026-09-19T10:00:00.000Z",
     }])).rejects.toThrow("simulated signal row write failure");
 
-    expect(rolledBack).toBe(true);
+    expect(transactionRejected).toBe(true);
     expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signal_reconciliations"))).toBe(true);
+    expect(client.queries.some((query) => query.text.includes("SET status = 'resolved'"))).toBe(false);
+    expect(client.queries.some((query) => query.text.includes("SELECT * FROM financial_signals"))).toBe(false);
   });
 
   it("persists transaction and ledger entries in one transaction", async () => {
