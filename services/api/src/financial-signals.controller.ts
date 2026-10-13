@@ -11,7 +11,7 @@ export class FinancialSignalsController {
     @OwnerId() ownerId: string,
     @Query("status") status?: string,
   ) {
-    if (status && !["active", "acknowledged", "resolved"].includes(status)) {
+    if (status !== undefined && !["active", "acknowledged", "resolved"].includes(status)) {
       throw new BadRequestException("status must be active, acknowledged, or resolved");
     }
     return this.financial.getSignals(ownerId, status as "active" | "acknowledged" | "resolved" | undefined);
