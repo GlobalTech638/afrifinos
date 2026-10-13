@@ -34,7 +34,7 @@ export interface StoredFinancialSignal {
   readonly resolvedAt?: string;
 }
 export interface FinancialRepository {
-  reconcileFinancialSignals(ownerId: string, signals: readonly FinancialSignalInput[]): Promise<readonly StoredFinancialSignal[]>;
+  reconcileFinancialSignals(ownerId: string, signals: readonly FinancialSignalInput[], reconciledAt?: string): Promise<readonly StoredFinancialSignal[]>;
   acknowledgeFinancialSignal(ownerId: string, signalId: string): Promise<StoredFinancialSignal | null>;
   getFinancialSignals(ownerId: string, status?: PersistedSignalStatus): Promise<readonly StoredFinancialSignal[]>;
   ensureOwner(ownerId: string): Promise<void>;
