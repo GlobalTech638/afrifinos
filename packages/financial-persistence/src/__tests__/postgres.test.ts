@@ -76,6 +76,22 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries[3]?.text).toContain("WHERE owner_id = $1");
   });
 
+  it("resolves missing signals while retaining owner-scoped history", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await repository.reconcileFinancialSignals("user-3", []);
+
+    expect(client.queries).toHaveLength(3);
+    expect(client.queries[0]?.text).toContain("pg_advisory_xact_lock");
+    expect(client.queries[1]?.text).toContain("SET status = 'resolved'");
+    expect(client.queries[1]?.text).toContain("WHERE owner_id = $1");
+    expect(client.queries[1]?.text).toContain("status IN ('active', 'acknowledged')");
+    expect(client.queries[1]?.values).toEqual(["user-3", []]);
+    expect(client.queries[2]?.text).toContain("SELECT * FROM financial_signals WHERE owner_id = $1");
+    expect(client.queries[2]?.values).toEqual(["user-3"]);
+  });
+
   it("acknowledges a signal only within the specified owner's scope", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
