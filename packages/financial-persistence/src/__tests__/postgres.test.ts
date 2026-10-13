@@ -2,14 +2,20 @@ import { describe, expect, it } from "vitest";
 import { PostgresFinancialRepository, type SqlClient } from "../postgres.js";
 import type { Transaction, LedgerEntry } from "@afrifinos/financial-domain";
 
-function createClient(acceptWatermark = true): SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } {
+function createClient(existingWatermark?: string): SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } {
+  let watermark = existingWatermark;
   const client = {
     queries: [] as Array<{ text: string; values: readonly unknown[] }>,
     async query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values: readonly unknown[] = []) {
       client.queries.push({ text, values });
-      const rows = text.includes("INSERT INTO financial_signal_reconciliations") && acceptWatermark
-        ? [{ owner_id: String(values[0]) } as Row]
-        : [];
+      let rows: Row[] = [];
+      if (text.includes("INSERT INTO financial_signal_reconciliations")) {
+        const incoming = String(values[1]);
+        if (watermark === undefined || incoming > watermark) {
+          watermark = incoming;
+          rows = [{ owner_id: String(values[0]) } as Row];
+        }
+      }
       return { rows };
     },
     async transaction<T>(work: (tx: SqlClient) => Promise<T>): Promise<T> {
