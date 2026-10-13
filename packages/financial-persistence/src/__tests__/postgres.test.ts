@@ -127,6 +127,18 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries.some((query) => query.text.includes("SET status = 'resolved'"))).toBe(false);
   });
 
+  it("rejects invalid reconciliation timestamps before issuing watermark SQL", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.reconcileFinancialSignals("user-8", [], "not-a-timestamp"))
+      .rejects.toThrow("Financial signal reconciliation timestamp must be valid");
+
+    expect(client.queries).toHaveLength(1);
+    expect(client.queries[0]?.text).toContain("pg_advisory_xact_lock");
+    expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signal_reconciliations"))).toBe(false);
+  });
+
   it("compares watermark timestamps as instants across timezone offsets", async () => {
     const client = createClient("2026-09-17T13:00:00.000+03:00");
     const repository = new PostgresFinancialRepository(client);
