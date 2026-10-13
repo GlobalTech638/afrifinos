@@ -48,37 +48,37 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
     };
   }
   async reconcileFinancialSignals(ownerId: string, signals: readonly FinancialSignalInput[], reconciledAt?: string): Promise<readonly StoredFinancialSignal[]> {
+    if (!ownerId.trim()) {
+      throw new Error("Financial signal ownerId cannot be empty");
+    }
+    const signalIds = new Set<string>();
+    for (const signal of signals) {
+      if (!signal.id.trim()) {
+        throw new Error("Financial signal id cannot be empty");
+      }
+      if (signalIds.has(signal.id)) {
+        throw new Error(`Duplicate financial signal id: ${signal.id}`);
+      }
+      signalIds.add(signal.id);
+    }
+    const timestampValues = [reconciledAt, ...signals.map((signal) => signal.detectedAt)]
+      .filter((value): value is string => value !== undefined);
+    for (const timestamp of timestampValues) {
+      if (!Number.isFinite(Date.parse(timestamp))) {
+        throw new Error("Financial signal timestamps must be valid ISO-compatible timestamps");
+      }
+    }
+    const snapshotAt = reconciledAt ?? signals.reduce<string | undefined>(
+      (latest, signal) => !latest || Date.parse(signal.detectedAt) > Date.parse(latest)
+        ? signal.detectedAt
+        : latest,
+      undefined,
+    ) ?? new Date().toISOString();
     return this.client.transaction(async (tx) => {
       // Serialize snapshot reconciliation per owner, then reject snapshots older than
       // the latest committed reconciliation. A lock alone cannot prevent stale work
       // that started earlier from committing after a newer snapshot.
       await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [ownerId]);
-      if (!ownerId.trim()) {
-        throw new Error("Financial signal ownerId cannot be empty");
-      }
-      const signalIds = new Set<string>();
-      for (const signal of signals) {
-        if (!signal.id.trim()) {
-          throw new Error("Financial signal id cannot be empty");
-        }
-        if (signalIds.has(signal.id)) {
-          throw new Error(`Duplicate financial signal id: ${signal.id}`);
-        }
-        signalIds.add(signal.id);
-      }
-      const timestampValues = [reconciledAt, ...signals.map((signal) => signal.detectedAt)]
-        .filter((value): value is string => value !== undefined);
-      for (const timestamp of timestampValues) {
-        if (!Number.isFinite(Date.parse(timestamp))) {
-          throw new Error("Financial signal timestamps must be valid ISO-compatible timestamps");
-        }
-      }
-      const snapshotAt = reconciledAt ?? signals.reduce<string | undefined>(
-        (latest, signal) => !latest || Date.parse(signal.detectedAt) > Date.parse(latest)
-          ? signal.detectedAt
-          : latest,
-        undefined,
-      ) ?? new Date().toISOString();
       const watermark = await tx.query<{ owner_id: string }>(`INSERT INTO financial_signal_reconciliations (owner_id, reconciled_at)
         VALUES ($1, $2)
         ON CONFLICT (owner_id) DO UPDATE SET reconciled_at = EXCLUDED.reconciled_at
