@@ -81,9 +81,9 @@ export class TransactionsController {
       description: body.description.trim(),
       amountMinor: parseAmountMinor(body.amountMinor),
       currency: parsedCurrency,
-      type: body.type,
-      counterparty: body.counterparty?.trim() || undefined,
-      externalId: body.externalId?.trim() || undefined,
+      ...(body.type ? { type: body.type } : {}),
+      ...(body.counterparty?.trim() ? { counterparty: body.counterparty.trim() } : {}),
+      ...(body.externalId?.trim() ? { externalId: body.externalId.trim() } : {}),
     };
 
     try {
@@ -93,7 +93,7 @@ export class TransactionsController {
         counterAccountId: body.counterAccountId.trim(),
         input,
         sourceKind: body.sourceKind ?? "manual",
-        providerId: body.providerId?.trim(),
+        ...(body.providerId?.trim() ? { providerId: body.providerId.trim() } : {}),
         transactionId: randomUUID(),
       });
 
