@@ -25,10 +25,10 @@ export class FinancialController {
     @Query("additionalRecurringMonthlyMinor") additionalRecurringMonthlyMinor = "0",
   ) {
     const parsedCurrency = this.parseCurrency(currency);
-    if (!/^\\d+$/.test(amountMinor ?? "") || BigInt(amountMinor) <= 0n) {
+    if (!/^\d+$/.test(amountMinor ?? "") || BigInt(amountMinor) <= 0n) {
       throw new BadRequestException("amountMinor must be a positive integer in minor currency units");
     }
-    if (!/^\\d+$/.test(additionalRecurringMonthlyMinor ?? "")) {
+    if (!/^\d+$/.test(additionalRecurringMonthlyMinor ?? "")) {
       throw new BadRequestException("additionalRecurringMonthlyMinor must be a non-negative integer in minor currency units");
     }
     return this.financial.getAffordability(ownerId, parsedCurrency, amountMinor, additionalRecurringMonthlyMinor);
