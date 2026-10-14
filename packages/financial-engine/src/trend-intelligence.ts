@@ -62,7 +62,19 @@ function trend(key: FinancialTrend["key"], currentMinor: bigint, baselineMinor: 
   };
 }
 
-function ratioOfBigInts(numerator: bigint, denominator: bigint): number {\n  const sign = (numerator < 0n) === (denominator < 0n) ? 1 : -1;\n  const n = numerator < 0n ? -numerator : numerator;\n  const d = denominator < 0n ? -denominator : denominator;\n  const ns = n.toString();\n  const ds = d.toString();\n  const precision = 15;\n  const np = Math.min(precision, ns.length);\n  const dp = Math.min(precision, ds.length);\n  return sign * (Number(ns.slice(0, np)) / Number(ds.slice(0, dp))) * 10 ** (ns.length - np - (ds.length - dp));\n}\n\nfunction absolute(value: bigint): bigint {
+function ratioOfBigInts(numerator: bigint, denominator: bigint): number {
+  const sign = (numerator < 0n) === (denominator < 0n) ? 1 : -1;
+  const n = numerator < 0n ? -numerator : numerator;
+  const d = denominator < 0n ? -denominator : denominator;
+  const ns = n.toString();
+  const ds = d.toString();
+  const precision = 15;
+  const np = Math.min(precision, ns.length);
+  const dp = Math.min(precision, ds.length);
+  return sign * (Number(ns.slice(0, np)) / Number(ds.slice(0, dp))) * 10 ** (ns.length - np - (ds.length - dp));
+}
+
+function absolute(value: bigint): bigint {
   return value < 0n ? -value : value;
 }
 
