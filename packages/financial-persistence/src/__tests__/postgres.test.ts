@@ -261,7 +261,7 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries[1]?.text).toContain("WHERE financial_signal_reconciliations.reconciled_at < EXCLUDED.reconciled_at");
     expect(client.queries[2]?.text).toContain("SELECT * FROM financial_signals WHERE owner_id = $1");
     expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signals"))).toBe(false);
-    expect(client.queries.some((query) => query.text.includes("SET status = 'resolved'")).toBe(false);
+    expect(client.queries.some((query) => query.text.includes("SET status = 'resolved'"))).toBe(false);
   });
 
   it("rejects empty acknowledgement identifiers before opening a transaction", async () => {
