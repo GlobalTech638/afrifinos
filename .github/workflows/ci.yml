@@ -8,8 +8,6 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     env:
       # Build-time placeholders only; CI never authenticates against this project.
       NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
@@ -22,20 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: pnpm install --no-frozen-lockfile
-      - name: Bootstrap the missing pnpm lockfile
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        run: |
-          if ! git ls-files --error-unmatch pnpm-lock.yaml >/dev/null 2>&1; then
-            branch="${{ github.event.pull_request.head.ref }}"
-            git fetch origin "$branch"
-            git switch -c lockfile-bootstrap FETCH_HEAD
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add pnpm-lock.yaml
-            git commit -m "chore: add pnpm lockfile"
-            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
-          fi
+      - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
