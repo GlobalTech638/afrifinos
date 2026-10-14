@@ -31,7 +31,7 @@ export function processTransaction(
 
   return {
     ...normalized,
-    categoryId: match.categoryId,
+    ...(match.categoryId ? { categoryId: match.categoryId } : {}),
     categoryConfidence: match.confidence,
     categoryMatchedKeywords: match.matchedKeywords,
     categorySource: match.source,
