@@ -23,7 +23,7 @@ export function calculateSpendingVolatility(
 ): SpendingVolatility {
   const monthly = new Map<string, bigint>();
   for (const transaction of transactions) {
-    if (transaction.currency !== currency || transaction.type !== "expense") continue;
+    if (transaction.total.currency !== currency || transaction.type !== "expense") continue;
     const date = new Date(transaction.occurredAt);
     if (Number.isNaN(date.getTime())) continue;
     const period = date.toISOString().slice(0, 7);
