@@ -47,9 +47,9 @@ export async function ingestTransactionBatch(
         counterAccountId: command.counterAccountId,
         transactionId: command.transactionIdFor(input, index),
         sourceKind: command.sourceKind,
-        providerId: command.providerId,
-        importedAt: command.importedAt,
-        sourceHash: command.sourceHash,
+        ...(command.providerId ? { providerId: command.providerId } : {}),
+        ...(command.importedAt ? { importedAt: command.importedAt } : {}),
+        ...(command.sourceHash ? { sourceHash: command.sourceHash } : {}),
         input,
       }));
     } catch (error) {
@@ -64,6 +64,7 @@ export async function ingestTransactionBatch(
   return {
     persisted,
     duplicates: deduplicated.duplicates,
+    ambiguous: deduplicated.ambiguous,
     failures,
   };
 }
