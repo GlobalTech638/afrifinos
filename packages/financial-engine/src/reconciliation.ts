@@ -28,8 +28,8 @@ export function identifyTransaction(
   providerId?: string,
 ): TransactionIdentity {
   return {
-    providerId,
-    externalId: transaction.externalId,
+    ...(providerId ? { providerId } : {}),
+    ...(transaction.externalId ? { externalId: transaction.externalId } : {}),
     fingerprint: transactionFingerprint(transaction),
   };
 }
