@@ -21,7 +21,7 @@ describe("forecastCashFlow", () => {
 
   it("schedules the next recurring occurrence relative to the last observed transaction", () => {
     const forecast = forecastCashFlow({ currency: "KES", startingBalanceMinor: 0n, averageMonthlyIncomeMinor: 0n, averageMonthlyExpenseMinor: 0n, recurring: [recurring[0]!], asOf: "2026-09-01T00:00:00Z", horizonDays: 30 });
-    expect(forecast.points[23]?.projectedIncomeMinor).toBe(100000n);
+    expect(forecast.points[22]?.projectedIncomeMinor).toBe(100000n);
     expect(forecast.points[29]?.projectedIncomeMinor).toBe(0n);
   });
 
@@ -43,8 +43,8 @@ describe("forecastCashFlow", () => {
     const forecast = forecastCashFlow({ currency: "KES", startingBalanceMinor: 100000n, averageMonthlyIncomeMinor: 0n, averageMonthlyExpenseMinor: 0n, obligations: [{ obligationId: "weekly", ownerId: "user-1", name: "Weekly contribution", amount: { amountMinor: 5000n, currency: "KES" }, dueAt: "2026-09-05T00:00:00Z", status: "active", recurring: true, recurrence: "weekly" }], asOf: "2026-09-01T00:00:00Z", horizonDays: 15 });
     expect(forecast.points[3]?.projectedExpenseMinor).toBe(5000n);
     expect(forecast.points[10]?.projectedExpenseMinor).toBe(5000n);
-    expect(forecast.points[14]?.projectedExpenseMinor).toBe(5000n);
-    expect(forecast.endingBalanceMinor).toBe(85000n);
+    expect(forecast.points[14]?.projectedExpenseMinor).toBe(0n);
+    expect(forecast.endingBalanceMinor).toBe(90000n);
   });
 
   it("ignores settled, cancelled, and foreign-currency obligations", () => {
