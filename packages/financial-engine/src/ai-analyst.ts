@@ -13,7 +13,7 @@ function fact(
   severity: FinancialFact["severity"],
   evidence: readonly string[],
 ): FinancialFact {
-  return { id, category, statement, severity, evidence };
+  return { id, category, statement, ...(severity ? { severity } : {}), evidence };
 }
 
 export function deriveFinancialFacts(snapshot: FinancialIntelligenceSnapshot): readonly FinancialFact[] {
