@@ -13,9 +13,16 @@ class InMemoryWriteRepository implements TransactionWriteRepository {
     }
   }
 
-  async saveTransactionWithLedger(transaction: Transaction, entries: readonly LedgerEntry[]): Promise<void> {
+  async assertAccountsCurrency(ownerId: string, accountIds: readonly string[], currency: string): Promise<void> {
+    if (ownerId !== "user-1" || currency !== "KES" || accountIds.some((accountId) => !["mpesa", "income"].includes(accountId))) {
+      throw new Error("Transaction currency must match both account currencies");
+    }
+  }
+
+  async saveTransactionWithLedger(transaction: Transaction, entries: readonly LedgerEntry[]): Promise<"inserted"> {
     this.transactions.push(transaction);
     this.entries.push(...entries);
+    return "inserted";
   }
 }
 
