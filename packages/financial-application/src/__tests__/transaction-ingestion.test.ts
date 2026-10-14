@@ -7,11 +7,18 @@ class InMemoryWriteRepository implements TransactionWriteRepository {
   readonly transactions: Transaction[] = [];
   readonly entries: LedgerEntry[] = [];
   readonly ownedAccounts = new Set(["mpesa", "bank", "expense", "income"]);
+  readonly accountCurrencies = new Map([["mpesa", "KES"], ["bank", "KES"], ["expense", "KES"], ["income", "KES"]]);
   readonly duplicateTransactionIds = new Set<string>();
 
   async assertAccountsOwnedBy(ownerId: string, accountIds: readonly string[]): Promise<void> {
     if (ownerId !== "user-1" || accountIds.some((accountId) => !this.ownedAccounts.has(accountId))) {
       throw new Error("One or more accounts do not belong to the authenticated owner");
+    }
+  }
+
+  async assertAccountsCurrency(ownerId: string, accountIds: readonly string[], currency: string): Promise<void> {
+    if (ownerId !== "user-1" || accountIds.some((accountId) => this.accountCurrencies.get(accountId) !== currency)) {
+      throw new Error("Transaction currency must match both account currencies");
     }
   }
 
@@ -102,6 +109,19 @@ describe("ingestTransaction", () => {
     expect(result.transaction.type).toBe("income");
     expect(result.transaction.total.amountMinor).toBe(100000n);
     expect(repository.entries[0]?.direction).toBe("credit");
+  });
+
+  it("rejects a transaction whose currency does not match both accounts", async () => {
+    const repository = new InMemoryWriteRepository();
+    repository.accountCurrencies.set("bank", "USD");
+
+    await expect(ingestTransaction(repository, {
+      ownerId: "user-1", primaryAccountId: "mpesa", counterAccountId: "bank",
+      transactionId: "tx-currency-mismatch", sourceKind: "manual",
+      input: { occurredAt: "2026-09-14T08:00:00Z", description: "Transfer", amountMinor: 2500n, currency: "KES" },
+    })).rejects.toThrow("Transaction currency must match both account currencies");
+    expect(repository.transactions).toHaveLength(0);
+    expect(repository.entries).toHaveLength(0);
   });
 
   it("rejects identical primary and counter accounts before persistence", async () => {
