@@ -5,7 +5,7 @@ import type { RawTransaction } from "@afrifinos/financial-engine";
 import type { FinancialRepository, TransactionWriteRepository } from "@afrifinos/financial-persistence";
 import { FINANCIAL_REPOSITORY } from "./app.module.js";
 import { OwnerId } from "./auth-context.js";
-import { ingestTransaction } from "@afrifinos/financial-application";
+import { ingestTransaction, TransactionInputError } from "@afrifinos/financial-application";
 
 interface CreateTransactionBody {
   readonly primaryAccountId: string;
@@ -106,6 +106,7 @@ export class TransactionsController {
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;
+      if (error instanceof TransactionInputError) throw new BadRequestException(error.message);
       throw new InternalServerErrorException("Unable to create transaction");
     }
   }
