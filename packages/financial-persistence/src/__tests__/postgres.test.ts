@@ -12,6 +12,9 @@ function createClient(existingWatermark?: string, failSignalInsert = false): Sql
         throw new Error("simulated signal row write failure");
       }
       let rows: Row[] = [];
+      if (text.includes("INSERT INTO transactions")) {
+        rows = [{ id: String(values[0]) } as unknown as Row];
+      }
       if (text.includes("INSERT INTO financial_signal_reconciliations")) {
         const incoming = String(values[1]);
         if (watermark === undefined || Date.parse(incoming) > Date.parse(watermark)) {
