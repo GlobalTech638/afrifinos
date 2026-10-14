@@ -88,7 +88,7 @@ function calculateAverageMonthlyExpense(transactions: readonly Transaction[], cu
   const periods = new Set<string>();
   let total = 0n;
   for (const transaction of transactions) {
-    if (transaction.currency !== currency || (transaction.type !== "expense" && transaction.type !== "fee")) continue;
+    if (transaction.total.currency !== currency || (transaction.type !== "expense" && transaction.type !== "fee")) continue;
     const date = new Date(transaction.occurredAt);
     if (Number.isNaN(date.getTime())) continue;
     periods.add(date.toISOString().slice(0, 7));
