@@ -55,6 +55,7 @@ export type TransactionWriteResult = "inserted" | "duplicate";
 
 export interface TransactionWriteRepository {
   assertAccountsOwnedBy(ownerId: string, accountIds: readonly string[]): Promise<void>;
+  assertAccountsCurrency(ownerId: string, accountIds: readonly string[], currency: string): Promise<void>;
   getTransactionByProviderExternalId(ownerId: string, providerId: string, externalId: string): Promise<Transaction | null>;
   saveTransactionWithLedger(transaction: Transaction, entries: readonly LedgerEntry[]): Promise<TransactionWriteResult>;
 }
