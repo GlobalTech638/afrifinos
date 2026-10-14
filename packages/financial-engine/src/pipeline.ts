@@ -37,10 +37,10 @@ export function processTransaction(
     categorySource: match.source,
     provenance: {
       sourceKind: options.sourceKind,
-      providerId: options.providerId,
-      externalId: normalized.externalId,
+      ...(options.providerId ? { providerId: options.providerId } : {}),
+      ...(normalized.externalId ? { externalId: normalized.externalId } : {}),
       importedAt: options.importedAt ?? new Date().toISOString(),
-      sourceHash: options.sourceHash,
+      ...(options.sourceHash ? { sourceHash: options.sourceHash } : {}),
     },
   };
 }
