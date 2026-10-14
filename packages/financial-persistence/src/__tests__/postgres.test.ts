@@ -49,6 +49,17 @@ const entries: readonly LedgerEntry[] = [
 ];
 
 describe("PostgresFinancialRepository", () => {
+  it("uses bound parameters when verifying account ownership", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.assertAccountsOwnedBy("user-1", ["cash", "expense"]))
+      .rejects.toThrow("One or more accounts do not belong to the authenticated owner");
+
+    expect(client.queries[0]?.text).toContain("id IN ($2, $3)");
+    expect(client.queries[0]?.values).toEqual(["user-1", "cash", "expense"]);
+  });
+
   it("propagates signal row failures and skips subsequent reconciliation writes", async () => {
     let transactionRejected = false;
     const baseClient = createClient(undefined, true);
