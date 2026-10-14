@@ -232,10 +232,21 @@ export function detectSpendingAnomalies(
     const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
     const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
     const standardDeviation = Math.sqrt(variance);
-    if (standardDeviation === 0) continue;
+    const sortedValues = [...values].sort((a, b) => a - b);
+    const median = sortedValues.length % 2 === 0
+      ? ((sortedValues[sortedValues.length / 2 - 1] ?? 0) + (sortedValues[sortedValues.length / 2] ?? 0)) / 2
+      : sortedValues[Math.floor(sortedValues.length / 2)] ?? 0;
+    const deviations = values.map((value) => Math.abs(value - median)).sort((a, b) => a - b);
+    const medianAbsoluteDeviation = deviations.length % 2 === 0
+      ? ((deviations[deviations.length / 2 - 1] ?? 0) + (deviations[deviations.length / 2] ?? 0)) / 2
+      : deviations[Math.floor(deviations.length / 2)] ?? 0;
+    if (standardDeviation === 0 && medianAbsoluteDeviation === 0) continue;
 
     for (const transaction of group) {
-      const zScore = (Number(effectiveAmount(transaction)) - mean) / standardDeviation;
+      const amount = Number(effectiveAmount(transaction));
+      const zScore = medianAbsoluteDeviation > 0
+        ? 0.6745 * (amount - median) / medianAbsoluteDeviation
+        : (amount - mean) / standardDeviation;
       if (zScore >= 2) {
         anomalies.push({
           transactionId: transaction.transactionId,
