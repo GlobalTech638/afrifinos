@@ -8,7 +8,11 @@ class InMemoryWriteRepository implements TransactionWriteRepository {
   readonly entries: LedgerEntry[] = [];
   readonly ownedAccounts = new Set(["mpesa", "bank", "expense", "income"]);
   readonly accountCurrencies = new Map([["mpesa", "KES"], ["bank", "KES"], ["expense", "KES"], ["income", "KES"]]);
-  readonly duplicateTransactionIds = new Set<string>();
+  readonly providerTransactions = new Map<string, Transaction>();
+
+  async getTransactionByProviderExternalId(_ownerId: string, providerId: string, externalId: string): Promise<Transaction | null> {
+    return this.providerTransactions.get(`${providerId}:${externalId}`) ?? null;
+  }
 
   async assertAccountsOwnedBy(ownerId: string, accountIds: readonly string[]): Promise<void> {
     if (ownerId !== "user-1" || accountIds.some((accountId) => !this.ownedAccounts.has(accountId))) {
@@ -26,7 +30,6 @@ class InMemoryWriteRepository implements TransactionWriteRepository {
     transaction: Transaction,
     entries: readonly LedgerEntry[],
   ): Promise<TransactionWriteResult> {
-    if (this.duplicateTransactionIds.has(transaction.transactionId)) return "duplicate";
     this.transactions.push(transaction);
     this.entries.push(...entries);
     return "inserted";
@@ -66,7 +69,12 @@ describe("ingestTransaction", () => {
 
   it("reports duplicates without creating ledger entries", async () => {
     const repository = new InMemoryWriteRepository();
-    repository.duplicateTransactionIds.add("tx-duplicate");
+    repository.providerTransactions.set("mpesa:external-duplicate", {
+      transactionId: "tx-duplicate", ownerId: "user-1", type: "expense", status: "posted",
+      occurredAt: "2026-09-14T08:00:00Z", description: "Naivas groceries",
+      total: { amountMinor: 2500n, currency: "KES" },
+      provenance: { sourceKind: "provider_api", providerId: "mpesa", externalId: "external-duplicate", importedAt: "2026-09-14T08:00:00Z" },
+    });
 
     const result = await ingestTransaction(repository, {
       ownerId: "user-1",
@@ -76,6 +84,7 @@ describe("ingestTransaction", () => {
       sourceKind: "provider_api",
       providerId: "mpesa",
       input: {
+        externalId: "external-duplicate",
         occurredAt: "2026-09-14T08:00:00Z",
         description: "Naivas groceries",
         amountMinor: 2500n,
