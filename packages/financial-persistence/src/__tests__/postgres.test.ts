@@ -39,13 +39,13 @@ const transaction: Transaction = {
   status: "posted",
   occurredAt: "2026-09-15T10:00:00Z",
   description: "Groceries",
-  total: { amountMinor: 2500n, currency: "KES" },
+  total: { amountMinor: 2500n, currency: "KES" as Transaction["total"]["currency"] },
   provenance: { sourceKind: "manual", importedAt: "2026-09-15T10:01:00Z" },
 };
 
 const entries: readonly LedgerEntry[] = [
-  { entryId: "txn-1:primary", transactionId: "txn-1", accountId: "cash", currency: "KES", amountMinor: 2500n, direction: "debit", postedAt: transaction.occurredAt },
-  { entryId: "txn-1:counter", transactionId: "txn-1", accountId: "expense", currency: "KES", amountMinor: 2500n, direction: "credit", postedAt: transaction.occurredAt },
+  { entryId: "txn-1:primary", transactionId: "txn-1", accountId: "cash", currency: "KES" as LedgerEntry["currency"], amountMinor: 2500n, direction: "debit", postedAt: transaction.occurredAt },
+  { entryId: "txn-1:counter", transactionId: "txn-1", accountId: "expense", currency: "KES" as LedgerEntry["currency"], amountMinor: 2500n, direction: "credit", postedAt: transaction.occurredAt },
 ];
 
 describe("PostgresFinancialRepository", () => {
