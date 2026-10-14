@@ -1,5 +1,6 @@
-import { BadRequestException, Body, Controller, Get, Inject, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Inject, InternalServerErrorException, Post, Query, HttpException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
+import { currencyCode, getCurrencyDefinition } from "@afrifinos/financial-domain";
 import type { RawTransaction } from "@afrifinos/financial-engine";
 import type { FinancialRepository, TransactionWriteRepository } from "@afrifinos/financial-persistence";
 import { FINANCIAL_REPOSITORY } from "./app.module.js";
@@ -62,7 +63,13 @@ export class TransactionsController {
       throw new BadRequestException("primaryAccountId and counterAccountId are required");
     }
     if (!body.description?.trim()) throw new BadRequestException("description is required");
-    if (!/^[A-Z]{3}$/i.test(body.currency ?? "")) throw new BadRequestException("currency must be a 3-letter ISO-style code");
+    let parsedCurrency: RawTransaction["currency"];
+    try {
+      parsedCurrency = currencyCode(body.currency ?? "");
+      getCurrencyDefinition(parsedCurrency);
+    } catch {
+      throw new BadRequestException("currency is not supported");
+    }
     if (body.type !== undefined && !TRANSACTION_TYPES.has(body.type)) throw new BadRequestException("type is invalid");
     if (body.sourceKind !== undefined && !SOURCE_KINDS.has(body.sourceKind)) throw new BadRequestException("sourceKind is invalid");
     if (body.providerId !== undefined && !body.providerId.trim()) throw new BadRequestException("providerId cannot be empty");
@@ -73,7 +80,7 @@ export class TransactionsController {
       occurredAt: validateOccurredAt(body.occurredAt),
       description: body.description.trim(),
       amountMinor: parseAmountMinor(body.amountMinor),
-      currency: body.currency.toUpperCase() as RawTransaction["currency"],
+      currency: parsedCurrency,
       type: body.type,
       counterparty: body.counterparty?.trim() || undefined,
       externalId: body.externalId?.trim() || undefined,
@@ -98,7 +105,8 @@ export class TransactionsController {
         },
       };
     } catch (error) {
-      throw new BadRequestException(error instanceof Error ? error.message : "Unable to create transaction");
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException("Unable to create transaction");
     }
   }
 }
