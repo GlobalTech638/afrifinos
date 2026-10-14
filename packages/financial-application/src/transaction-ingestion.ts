@@ -79,9 +79,9 @@ export async function ingestTransaction(
 
   const enriched = processTransaction(command.input, {
     sourceKind: command.sourceKind,
-    providerId: command.providerId,
-    importedAt: command.importedAt,
-    sourceHash: command.sourceHash,
+    ...(command.providerId ? { providerId: command.providerId } : {}),
+    ...(command.importedAt ? { importedAt: command.importedAt } : {}),
+    ...(command.sourceHash ? { sourceHash: command.sourceHash } : {}),
   });
 
   const transaction: Transaction = {
@@ -91,8 +91,8 @@ export async function ingestTransaction(
     status: "posted",
     occurredAt: enriched.occurredAt,
     description: enriched.description,
-    counterparty: enriched.counterparty,
-    categoryId: enriched.categoryId,
+    ...(enriched.counterparty ? { counterparty: enriched.counterparty } : {}),
+    ...(enriched.categoryId ? { categoryId: enriched.categoryId } : {}),
     total: {
       amountMinor: enriched.amountMinor < 0n ? -enriched.amountMinor : enriched.amountMinor,
       currency: enriched.currency,
