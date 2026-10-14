@@ -13,6 +13,10 @@ class InMemoryWriteRepository implements TransactionWriteRepository {
     }
   }
 
+  async getTransactionByProviderExternalId(): Promise<Transaction | null> {
+    return null;
+  }
+
   async assertAccountsCurrency(ownerId: string, accountIds: readonly string[], currency: string): Promise<void> {
     if (ownerId !== "user-1" || currency !== "KES" || accountIds.some((accountId) => !["mpesa", "income"].includes(accountId))) {
       throw new Error("Transaction currency must match both account currencies");
