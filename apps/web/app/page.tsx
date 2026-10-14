@@ -45,7 +45,8 @@ type Intelligence = {
 
 type ImportResult = {
   importedCount: number;
-  duplicateCount: number;\n  ambiguousCount?: number;
+  duplicateCount: number;
+  ambiguousCount?: number;
   rejectedCount: number;
   parseErrors: { row: number; message: string }[];
   persistenceErrors: { row: number; message: string }[];
