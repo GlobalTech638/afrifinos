@@ -48,6 +48,10 @@ export async function ingestTransaction(
     command.primaryAccountId,
     command.counterAccountId,
   ]);
+  await repository.assertAccountsCurrency(command.ownerId, [
+    command.primaryAccountId,
+    command.counterAccountId,
+  ], command.input.currency);
 
   if (command.providerId && command.input.externalId) {
     const existing = await repository.getTransactionByProviderExternalId(
