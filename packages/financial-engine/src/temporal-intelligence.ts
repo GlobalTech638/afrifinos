@@ -159,8 +159,11 @@ export function detectRecurringTransactions(
     const sorted = [...group].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
     const intervals: number[] = [];
     for (let index = 1; index < sorted.length; index += 1) {
-      const previous = new Date(sorted[index - 1].occurredAt).getTime();
-      const current = new Date(sorted[index].occurredAt).getTime();
+      const previousTransaction = sorted[index - 1];
+      const currentTransaction = sorted[index];
+      if (!previousTransaction || !currentTransaction) continue;
+      const previous = new Date(previousTransaction.occurredAt).getTime();
+      const current = new Date(currentTransaction.occurredAt).getTime();
       const interval = (current - previous) / 86_400_000;
       if (!Number.isFinite(interval) || interval <= 0) continue;
       intervals.push(interval);
@@ -186,10 +189,12 @@ export function detectRecurringTransactions(
     const lastObserved = sorted[sorted.length - 1];
     if (!lastObserved) continue;
 
+    const firstObserved = sorted[0];
+    if (!firstObserved) continue;
     results.push({
       key,
       description: displayDescription(lastObserved),
-      type: sorted[0].type as "expense" | "income",
+      type: firstObserved.type as "expense" | "income",
       currency,
       amountMinor: averageAmountMinor,
       averageAmountMinor,
@@ -234,7 +239,7 @@ export function detectSpendingAnomalies(
       if (zScore >= 2) {
         anomalies.push({
           transactionId: transaction.transactionId,
-          categoryId: transaction.categoryId,
+          ...(transaction.categoryId ? { categoryId: transaction.categoryId } : {}),
           amountMinor: effectiveAmount(transaction),
           baselineAverageMinor: mean,
           zScore: Number(zScore.toFixed(2)),
