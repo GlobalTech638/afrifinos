@@ -56,16 +56,22 @@ export async function ingestTransaction(
       command.primaryAccountId,
       command.counterAccountId,
     ]);
-  } catch {
-    throw new TransactionInputError("One or more accounts do not belong to the authenticated owner");
+  } catch (error) {
+    if (error instanceof Error && error.message === "One or more accounts do not belong to the authenticated owner") {
+      throw new TransactionInputError(error.message);
+    }
+    throw error;
   }
   try {
     await repository.assertAccountsCurrency(command.ownerId, [
       command.primaryAccountId,
       command.counterAccountId,
     ], command.input.currency);
-  } catch {
-    throw new TransactionInputError("Transaction currency must match both account currencies");
+  } catch (error) {
+    if (error instanceof Error && error.message === "Transaction currency must match both account currencies") {
+      throw new TransactionInputError(error.message);
+    }
+    throw error;
   }
 
   if (command.providerId && command.input.externalId) {
