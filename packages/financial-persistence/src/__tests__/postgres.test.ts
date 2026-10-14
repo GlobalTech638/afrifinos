@@ -16,7 +16,7 @@ function createClient(existingWatermark?: string, failSignalInsert = false): Sql
         const incoming = String(values[1]);
         if (watermark === undefined || Date.parse(incoming) > Date.parse(watermark)) {
           watermark = incoming;
-          rows = [{ owner_id: String(values[0]) } as Row];
+          rows = [{ owner_id: String(values[0]) } as unknown as Row];
         }
       }
       return { rows };
