@@ -12,6 +12,14 @@ function createClient(existingWatermark?: string, failSignalInsert = false, conf
         throw new Error("simulated signal row write failure");
       }
       let rows: Row[] = [];
+      if (text.includes("JOIN accounts a") && text.includes("FOR SHARE OF t, a")) {
+        rows = [{
+          transaction_owner_id: "user-1",
+          transaction_currency: "KES",
+          account_owner_id: "user-1",
+          account_currency: "KES",
+        } as unknown as Row];
+      }
       if (text.includes("FROM accounts") && text.includes("FOR SHARE")) {
         const accountIds = Array.isArray(values[1]) ? values[1] as string[] : [];
         const ownedCount = Math.min(ownedAccountCount ?? accountIds.length, accountIds.length);
@@ -118,12 +126,14 @@ describe("PostgresFinancialRepository", () => {
 
     await repository.saveTransactionWithLedger(transaction, entries);
 
-    expect(client.queries).toHaveLength(4);
-    expect(client.queries[0]?.text).toContain("FOR SHARE");
+    expect(client.queries).toHaveLength(6);
+    expect(client.queries[0]?.text).toContain("FROM accounts");
     expect(client.queries[1]?.text).toContain("INSERT INTO transactions");
     expect(client.queries[1]?.text).toContain("ON CONFLICT (owner_id, provider_id, external_id) WHERE provider_id IS NOT NULL AND external_id IS NOT NULL DO NOTHING");
-    expect(client.queries[2]?.text).toContain("INSERT INTO ledger_entries");
+    expect(client.queries[2]?.text).toContain("JOIN accounts a");
     expect(client.queries[3]?.text).toContain("INSERT INTO ledger_entries");
+    expect(client.queries[4]?.text).toContain("JOIN accounts a");
+    expect(client.queries[5]?.text).toContain("INSERT INTO ledger_entries");
     expect(client.queries[1]?.values[8]).toBe("2500");
   });
 
@@ -203,8 +213,8 @@ describe("PostgresFinancialRepository", () => {
     await repository.saveTransactionWithLedger(transaction, entries);
 
     expect(transactionCalls).toBe(1);
-    expect(client.queries.map((query) => query.text.includes("FOR SHARE") ? "ownership" : query.text.includes("INSERT INTO transactions") ? "transaction" : "ledger"))
-      .toEqual(["ownership", "transaction", "ledger", "ledger"]);
+    expect(client.queries.map((query) => query.text.includes("JOIN accounts a") ? "entry-ownership" : query.text.includes("FROM accounts") ? "batch-ownership" : query.text.includes("INSERT INTO transactions") ? "transaction" : "ledger"))
+      .toEqual(["batch-ownership", "transaction", "entry-ownership", "ledger", "entry-ownership", "ledger"]);
   });
 
   it("rejects reuse of a ledger entry id when the existing row has different data", async () => {
@@ -214,11 +224,12 @@ describe("PostgresFinancialRepository", () => {
     await expect(repository.saveTransactionWithLedger(transaction, entries))
       .rejects.toThrow(`Ledger entry id conflict with different data: ${entries[0]!.entryId}`);
 
-    expect(client.queries).toHaveLength(3);
-    expect(client.queries[0]?.text).toContain("FOR SHARE");
+    expect(client.queries).toHaveLength(4);
+    expect(client.queries[0]?.text).toContain("FROM accounts");
     expect(client.queries[1]?.text).toContain("INSERT INTO transactions");
-    expect(client.queries[2]?.text).toContain("WHERE ledger_entries.transaction_id = EXCLUDED.transaction_id");
-    expect(client.queries[2]?.text).toContain("RETURNING id");
+    expect(client.queries[2]?.text).toContain("JOIN accounts a");
+    expect(client.queries[3]?.text).toContain("WHERE ledger_entries.transaction_id = EXCLUDED.transaction_id");
+    expect(client.queries[3]?.text).toContain("RETURNING id");
   });
 
 
