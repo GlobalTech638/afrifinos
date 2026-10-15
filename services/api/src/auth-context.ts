@@ -74,6 +74,29 @@ export class JwtAuthGuard implements CanActivate {
 
     if (!token) throw new UnauthorizedException("Authentication is required");
 
+    const authorization = request.headers.authorization;
+    const hasBearerToken = Boolean(authorization?.startsWith("Bearer ") && authorization.slice("Bearer ".length).trim());
+    const mutatingMethod = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase());
+    if (!hasBearerToken && mutatingMethod) {
+      const expectedOrigin = process.env.WEB_ORIGIN?.trim();
+      const requestOrigin = request.headers.origin;
+      let trustedOrigin: string | null = null;
+      try {
+        if (expectedOrigin) trustedOrigin = new URL(expectedOrigin).origin;
+      } catch {
+        trustedOrigin = null;
+      }
+      let actualOrigin: string | null = null;
+      try {
+        if (requestOrigin) actualOrigin = new URL(requestOrigin).origin;
+      } catch {
+        actualOrigin = null;
+      }
+      if (!trustedOrigin || !actualOrigin || actualOrigin !== trustedOrigin) {
+        throw new UnauthorizedException("Cookie-authenticated state-changing requests require a trusted Origin");
+      }
+    }
+
     try {
       const { payload } = await jwtVerify(token, this.jwks, {
         issuer: this.issuer,
