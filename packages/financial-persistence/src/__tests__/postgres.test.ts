@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PostgresFinancialRepository, type SqlClient } from "../postgres.js";
 import type { Transaction, LedgerEntry } from "@afrifinos/financial-domain";
 
-function createClient(existingWatermark?: string, failSignalInsert = false): SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } {
+function createClient(existingWatermark?: string, failSignalInsert = false, conflictingLedgerEntryId?: string): SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } {
   let watermark = existingWatermark;
   const client = {
     queries: [] as Array<{ text: string; values: readonly unknown[] }>,
@@ -14,6 +14,9 @@ function createClient(existingWatermark?: string, failSignalInsert = false): Sql
       let rows: Row[] = [];
       if (text.includes("INSERT INTO transactions")) {
         rows = [{ id: String(values[0]) } as unknown as Row];
+      }
+      if (text.includes("INSERT INTO ledger_entries")) {
+        rows = values[0] === conflictingLedgerEntryId ? [] : [{ id: String(values[0]) } as unknown as Row];
       }
       if (text.includes("INSERT INTO financial_signal_reconciliations")) {
         const incoming = String(values[1]);
@@ -111,6 +114,19 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries[1]?.text).toContain("INSERT INTO ledger_entries");
     expect(client.queries[2]?.text).toContain("INSERT INTO ledger_entries");
     expect(client.queries[0]?.values[8]).toBe("2500");
+  });
+
+  it("rejects reuse of a ledger entry id when the existing row has different data", async () => {
+    const client = createClient(undefined, false, entries[0]!.entryId);
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveTransactionWithLedger(transaction, entries))
+      .rejects.toThrow(`Ledger entry id conflict with different data: ${entries[0]!.entryId}`);
+
+    expect(client.queries).toHaveLength(2);
+    expect(client.queries[0]?.text).toContain("INSERT INTO transactions");
+    expect(client.queries[1]?.text).toContain("WHERE ledger_entries.transaction_id = EXCLUDED.transaction_id");
+    expect(client.queries[1]?.text).toContain("RETURNING id");
   });
 
 
