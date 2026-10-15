@@ -141,6 +141,17 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries).toHaveLength(0);
   });
 
+  it("rejects negative ledger amounts before issuing persistence queries", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+    const negative = [{ ...entries[0]!, amountMinor: -1n }, entries[1]!];
+
+    await expect(repository.saveTransactionWithLedger(transaction, negative))
+      .rejects.toThrow("Ledger entries must match their transaction identity and currency and use non-negative amounts");
+
+    expect(client.queries).toHaveLength(0);
+  });
+
   it("rejects an unbalanced ledger before issuing persistence queries", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
