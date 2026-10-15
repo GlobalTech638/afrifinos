@@ -12,6 +12,9 @@ function createClient(existingWatermark?: string, failSignalInsert = false, conf
         throw new Error("simulated signal row write failure");
       }
       let rows: Row[] = [];
+      if (text.includes("SELECT amount_minor, currency FROM transactions")) {
+        rows = [{ amount_minor: "2500", currency: "KES" } as unknown as Row];
+      }
       if (text.includes("JOIN accounts a") && text.includes("FOR SHARE OF t, a")) {
         rows = [{
           transaction_owner_id: ledgerOwnership.transactionOwnerId,
@@ -120,6 +123,16 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries.some((query) => query.text.includes("SELECT * FROM financial_signals"))).toBe(false);
   });
 
+  it("rejects unbalanced standalone ledger batches before writing", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveLedgerEntries([entries[0]!]))
+      .rejects.toThrow("Ledger entries must have equal positive debit and credit totals");
+
+    expect(client.queries).toHaveLength(0);
+  });
+
   it("rejects direct ledger writes across owners", async () => {
     const client = createClient(undefined, false, undefined, undefined, undefined, {
       transactionOwnerId: "user-1",
@@ -132,8 +145,9 @@ describe("PostgresFinancialRepository", () => {
     await expect(repository.saveLedgerEntries(entries))
       .rejects.toThrow("Ledger account must belong to the transaction owner");
 
-    expect(client.queries).toHaveLength(1);
-    expect(client.queries[0]?.text).toContain("JOIN accounts a");
+    expect(client.queries).toHaveLength(2);
+    expect(client.queries[0]?.text).toContain("SELECT amount_minor, currency FROM transactions");
+    expect(client.queries[1]?.text).toContain("JOIN accounts a");
   });
 
   it("rejects direct ledger writes with a mismatched currency", async () => {
