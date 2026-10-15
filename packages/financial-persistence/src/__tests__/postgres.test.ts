@@ -111,6 +111,7 @@ describe("PostgresFinancialRepository", () => {
 
     expect(client.queries).toHaveLength(3);
     expect(client.queries[0]?.text).toContain("INSERT INTO transactions");
+    expect(client.queries[0]?.text).toContain("ON CONFLICT (owner_id, provider_id, external_id) WHERE provider_id IS NOT NULL AND external_id IS NOT NULL DO NOTHING");
     expect(client.queries[1]?.text).toContain("INSERT INTO ledger_entries");
     expect(client.queries[2]?.text).toContain("INSERT INTO ledger_entries");
     expect(client.queries[0]?.values[8]).toBe("2500");
