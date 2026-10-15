@@ -127,6 +127,20 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries[1]?.values[8]).toBe("2500");
   });
 
+  it("rejects balanced ledger entries that disagree with the transaction amount", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+    const balancedButWrong = [
+      { ...entries[0]!, amountMinor: 2400n },
+      { ...entries[1]!, amountMinor: 2400n },
+    ];
+
+    await expect(repository.saveTransactionWithLedger(transaction, balancedButWrong))
+      .rejects.toThrow("Ledger total must match the transaction amount");
+
+    expect(client.queries).toHaveLength(0);
+  });
+
   it("rejects an unbalanced ledger before issuing persistence queries", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
