@@ -12,6 +12,10 @@ function createClient(existingWatermark?: string, failSignalInsert = false, conf
         throw new Error("simulated signal row write failure");
       }
       let rows: Row[] = [];
+      if (text.includes("COUNT(DISTINCT id)")) {
+        const accountIds = Array.isArray(values[1]) ? values[1] as unknown[] : [];
+        rows = [{ count: accountIds.length, matching_count: accountIds.length } as unknown as Row];
+      }
       if (text.includes("INSERT INTO transactions")) {
         rows = [{ id: String(values[0]) } as unknown as Row];
       }
@@ -109,12 +113,13 @@ describe("PostgresFinancialRepository", () => {
 
     await repository.saveTransactionWithLedger(transaction, entries);
 
-    expect(client.queries).toHaveLength(3);
-    expect(client.queries[0]?.text).toContain("INSERT INTO transactions");
-    expect(client.queries[0]?.text).toContain("ON CONFLICT (owner_id, provider_id, external_id) WHERE provider_id IS NOT NULL AND external_id IS NOT NULL DO NOTHING");
-    expect(client.queries[1]?.text).toContain("INSERT INTO ledger_entries");
+    expect(client.queries).toHaveLength(4);
+    expect(client.queries[0]?.text).toContain("COUNT(DISTINCT id)");
+    expect(client.queries[1]?.text).toContain("INSERT INTO transactions");
+    expect(client.queries[1]?.text).toContain("ON CONFLICT (owner_id, provider_id, external_id) WHERE provider_id IS NOT NULL AND external_id IS NOT NULL DO NOTHING");
     expect(client.queries[2]?.text).toContain("INSERT INTO ledger_entries");
-    expect(client.queries[0]?.values[8]).toBe("2500");
+    expect(client.queries[3]?.text).toContain("INSERT INTO ledger_entries");
+    expect(client.queries[1]?.values[8]).toBe("2500");
   });
 
   it("writes a transaction and its ledger entries using a single transaction boundary", async () => {
@@ -135,8 +140,8 @@ describe("PostgresFinancialRepository", () => {
     await repository.saveTransactionWithLedger(transaction, entries);
 
     expect(transactionCalls).toBe(1);
-    expect(client.queries.map((query) => query.text.includes("INSERT INTO transactions") ? "transaction" : "ledger"))
-      .toEqual(["transaction", "ledger", "ledger"]);
+    expect(client.queries.map((query) => query.text.includes("COUNT(DISTINCT id)") ? "ownership" : query.text.includes("INSERT INTO transactions") ? "transaction" : "ledger"))
+      .toEqual(["ownership", "transaction", "ledger", "ledger"]);
   });
 
   it("rejects reuse of a ledger entry id when the existing row has different data", async () => {
@@ -146,10 +151,11 @@ describe("PostgresFinancialRepository", () => {
     await expect(repository.saveTransactionWithLedger(transaction, entries))
       .rejects.toThrow(`Ledger entry id conflict with different data: ${entries[0]!.entryId}`);
 
-    expect(client.queries).toHaveLength(2);
-    expect(client.queries[0]?.text).toContain("INSERT INTO transactions");
-    expect(client.queries[1]?.text).toContain("WHERE ledger_entries.transaction_id = EXCLUDED.transaction_id");
-    expect(client.queries[1]?.text).toContain("RETURNING id");
+    expect(client.queries).toHaveLength(3);
+    expect(client.queries[0]?.text).toContain("COUNT(DISTINCT id)");
+    expect(client.queries[1]?.text).toContain("INSERT INTO transactions");
+    expect(client.queries[2]?.text).toContain("WHERE ledger_entries.transaction_id = EXCLUDED.transaction_id");
+    expect(client.queries[2]?.text).toContain("RETURNING id");
   });
 
 
