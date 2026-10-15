@@ -127,6 +127,17 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries[1]?.values[8]).toBe("2500");
   });
 
+  it("rejects an unbalanced ledger before issuing persistence queries", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+    const unbalanced = [entries[0]!, { ...entries[1]!, amountMinor: 2400n }];
+
+    await expect(repository.saveTransactionWithLedger(transaction, unbalanced))
+      .rejects.toThrow("Ledger entries must have equal positive debit and credit totals");
+
+    expect(client.queries).toHaveLength(0);
+  });
+
   it("rejects ledger writes when accounts are not all owned by the transaction owner", async () => {
     const client = createClient(undefined, false, undefined, 1, 1);
     const repository = new PostgresFinancialRepository(client);
