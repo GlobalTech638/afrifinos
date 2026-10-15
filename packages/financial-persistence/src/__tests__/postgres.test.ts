@@ -116,6 +116,28 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries[0]?.values[8]).toBe("2500");
   });
 
+  it("writes a transaction and its ledger entries using a single transaction boundary", async () => {
+    const base = createClient();
+    let transactionCalls = 0;
+    const client: SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } = {
+      queries: base.queries,
+      async query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values: readonly unknown[] = []) {
+        return base.query<Row>(text, values);
+      },
+      async transaction<T>(work: (tx: SqlClient) => Promise<T>): Promise<T> {
+        transactionCalls += 1;
+        return work(this);
+      },
+    };
+    const repository = new PostgresFinancialRepository(client);
+
+    await repository.saveTransactionWithLedger(transaction, entries);
+
+    expect(transactionCalls).toBe(1);
+    expect(client.queries.map((query) => query.text.includes("INSERT INTO transactions") ? "transaction" : "ledger"))
+      .toEqual(["transaction", "ledger", "ledger"]);
+  });
+
   it("rejects reuse of a ledger entry id when the existing row has different data", async () => {
     const client = createClient(undefined, false, entries[0]!.entryId);
     const repository = new PostgresFinancialRepository(client);
