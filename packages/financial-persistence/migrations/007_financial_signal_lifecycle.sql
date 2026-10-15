@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS financial_signals (
-  owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   signal_id TEXT NOT NULL,
   category TEXT NOT NULL CHECK (category IN ('cash_flow', 'savings', 'debt', 'net_worth', 'forecast', 'liquidity', 'recurring', 'anomaly', 'health')),
   severity TEXT NOT NULL CHECK (severity IN ('info', 'warning', 'critical')),
