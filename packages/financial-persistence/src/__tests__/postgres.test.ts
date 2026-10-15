@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PostgresFinancialRepository, type SqlClient } from "../postgres.js";
 import type { Transaction, LedgerEntry } from "@afrifinos/financial-domain";
 
-function createClient(existingWatermark?: string, failSignalInsert = false, conflictingLedgerEntryId?: string): SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } {
+function createClient(existingWatermark?: string, failSignalInsert = false, conflictingLedgerEntryId?: string, ownedAccountCount?: number, matchingCurrencyCount?: number): SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } {
   let watermark = existingWatermark;
   const client = {
     queries: [] as Array<{ text: string; values: readonly unknown[] }>,
@@ -14,7 +14,7 @@ function createClient(existingWatermark?: string, failSignalInsert = false, conf
       let rows: Row[] = [];
       if (text.includes("COUNT(DISTINCT id)")) {
         const accountIds = Array.isArray(values[1]) ? values[1] as unknown[] : [];
-        rows = [{ count: accountIds.length, matching_count: accountIds.length } as unknown as Row];
+        rows = [{ count: ownedAccountCount ?? accountIds.length, matching_count: matchingCurrencyCount ?? accountIds.length } as unknown as Row];
       }
       if (text.includes("INSERT INTO transactions")) {
         rows = [{ id: String(values[0]) } as unknown as Row];
@@ -120,6 +120,28 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries[2]?.text).toContain("INSERT INTO ledger_entries");
     expect(client.queries[3]?.text).toContain("INSERT INTO ledger_entries");
     expect(client.queries[1]?.values[8]).toBe("2500");
+  });
+
+  it("rejects ledger writes when accounts are not all owned by the transaction owner", async () => {
+    const client = createClient(undefined, false, undefined, 1, 1);
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveTransactionWithLedger(transaction, entries))
+      .rejects.toThrow("Ledger accounts must belong to the transaction owner");
+
+    expect(client.queries).toHaveLength(1);
+    expect(client.queries[0]?.text).toContain("COUNT(DISTINCT id)");
+  });
+
+  it("rejects ledger writes when an account currency differs from the transaction currency", async () => {
+    const client = createClient(undefined, false, undefined, 2, 1);
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveTransactionWithLedger(transaction, entries))
+      .rejects.toThrow("Ledger account currency must match transaction currency");
+
+    expect(client.queries).toHaveLength(1);
+    expect(client.queries[0]?.text).toContain("matching_count");
   });
 
   it("writes a transaction and its ledger entries using a single transaction boundary", async () => {
