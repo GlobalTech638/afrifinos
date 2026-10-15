@@ -37,8 +37,8 @@ export class ImportsController {
     }
     const result = ingestTransactionBatch(this.repository, {
       ownerId,
-      primaryAccountId: body.primaryAccountId,
-      counterAccountId: body.counterAccountId,
+      primaryAccountId: body.primaryAccountId.trim(),
+      counterAccountId: body.counterAccountId.trim(),
       inputs: parsed.rows,
       sourceKind: "csv",
       ...(body.providerId ? { providerId: body.providerId } : {}),
