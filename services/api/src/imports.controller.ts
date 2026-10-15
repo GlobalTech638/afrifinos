@@ -41,7 +41,7 @@ export class ImportsController {
       counterAccountId: body.counterAccountId.trim(),
       inputs: parsed.rows,
       sourceKind: "csv",
-      ...(body.providerId ? { providerId: body.providerId } : {}),
+      ...(body.providerId?.trim() ? { providerId: body.providerId.trim() } : {}),
       transactionIdFor: () => randomUUID(),
     });
 
