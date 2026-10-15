@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PostgresFinancialRepository, type SqlClient } from "../postgres.js";
 import type { Transaction, LedgerEntry } from "@afrifinos/financial-domain";
 
-function createClient(existingWatermark?: string, failSignalInsert = false, conflictingLedgerEntryId?: string, ownedAccountCount?: number, matchingCurrencyCount?: number): SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } {
+function createClient(existingWatermark?: string, failSignalInsert = false, conflictingLedgerEntryId?: string, ownedAccountCount?: number, matchingCurrencyCount?: number, ledgerOwnership = { transactionOwnerId: "user-1", accountOwnerId: "user-1", transactionCurrency: "KES", accountCurrency: "KES" }): SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } {
   let watermark = existingWatermark;
   const client = {
     queries: [] as Array<{ text: string; values: readonly unknown[] }>,
@@ -14,10 +14,10 @@ function createClient(existingWatermark?: string, failSignalInsert = false, conf
       let rows: Row[] = [];
       if (text.includes("JOIN accounts a") && text.includes("FOR SHARE OF t, a")) {
         rows = [{
-          transaction_owner_id: "user-1",
-          transaction_currency: "KES",
-          account_owner_id: "user-1",
-          account_currency: "KES",
+          transaction_owner_id: ledgerOwnership.transactionOwnerId,
+          transaction_currency: ledgerOwnership.transactionCurrency,
+          account_owner_id: ledgerOwnership.accountOwnerId,
+          account_currency: ledgerOwnership.accountCurrency,
         } as unknown as Row];
       }
       if (text.includes("FROM accounts") && text.includes("FOR SHARE")) {
@@ -118,6 +118,38 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries.some((query) => query.text.includes("INSERT INTO financial_signal_reconciliations"))).toBe(true);
     expect(client.queries.some((query) => query.text.includes("SET status = 'resolved'"))).toBe(false);
     expect(client.queries.some((query) => query.text.includes("SELECT * FROM financial_signals"))).toBe(false);
+  });
+
+  it("rejects direct ledger writes across owners", async () => {
+    const client = createClient(undefined, false, undefined, undefined, undefined, {
+      transactionOwnerId: "user-1",
+      accountOwnerId: "user-2",
+      transactionCurrency: "KES",
+      accountCurrency: "KES",
+    });
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveLedgerEntries(entries))
+      .rejects.toThrow("Ledger account must belong to the transaction owner");
+
+    expect(client.queries).toHaveLength(1);
+    expect(client.queries[0]?.text).toContain("JOIN accounts a");
+  });
+
+  it("rejects direct ledger writes with a mismatched currency", async () => {
+    const client = createClient(undefined, false, undefined, undefined, undefined, {
+      transactionOwnerId: "user-1",
+      accountOwnerId: "user-1",
+      transactionCurrency: "KES",
+      accountCurrency: "USD",
+    });
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveLedgerEntries(entries))
+      .rejects.toThrow("Ledger entry currency must match both transaction and account currencies");
+
+    expect(client.queries).toHaveLength(1);
+    expect(client.queries[0]?.text).toContain("JOIN accounts a");
   });
 
   it("persists transaction and ledger entries in one transaction", async () => {
