@@ -31,12 +31,13 @@ describe("deduplicateTransactions", () => {
     expect(result.ambiguous).toHaveLength(2);
   });
 
-  it("does not treat equal IDs from different providers as duplicates", () => {
-    const result = deduplicateTransactions([tx(), tx()], "bank-a");
-    expect(result.unique).toHaveLength(1);
-    expect(result.duplicates).toHaveLength(1);
-    // The provider namespace is the caller's batch scope. Cross-provider rows
-    // must be processed in separate calls or with an explicit source namespace.
+  it("keeps identical external IDs distinct across provider-scoped batches", () => {
+    const bankA = deduplicateTransactions([tx()], "bank-a");
+    const bankB = deduplicateTransactions([tx()], "bank-b");
+    expect(bankA.unique).toHaveLength(1);
+    expect(bankA.duplicates).toHaveLength(0);
+    expect(bankB.unique).toHaveLength(1);
+    expect(bankB.duplicates).toHaveLength(0);
   });
 
   it("keeps identical fingerprint rows ambiguous, not silently discarded", () => {
