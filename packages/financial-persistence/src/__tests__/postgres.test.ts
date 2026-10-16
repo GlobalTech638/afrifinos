@@ -127,7 +127,11 @@ describe("PostgresFinancialRepository", () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
 
-    await expect(repository.saveLedgerEntries([entries[0]!]))
+    const unbalanced = [
+      entries[0]!,
+      { ...entries[1]!, amountMinor: entries[1]!.amountMinor - 1n },
+    ];
+    await expect(repository.saveLedgerEntries(unbalanced))
       .rejects.toThrow("Ledger entries must have equal positive debit and credit totals");
 
     expect(client.queries).toHaveLength(0);
