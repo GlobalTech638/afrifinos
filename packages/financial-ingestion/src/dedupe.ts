@@ -7,7 +7,6 @@ export interface DedupeResult<T extends RawTransaction> {
 }
 
 function fingerprint(transaction: RawTransaction): string {
-  // JSON encoding avoids collisions when descriptions/counterparties contain delimiters.
   return JSON.stringify([
     transaction.occurredAt,
     transaction.description.trim().toLowerCase().replace(/\s+/g, " "),
@@ -19,49 +18,57 @@ function fingerprint(transaction: RawTransaction): string {
 }
 
 /**
- * Deduplicates exact provider events by externalId when a provider namespace
- * is known. Without that namespace, an external ID is not globally unique and
- * is therefore not enough evidence to discard a row.
- *
- * Rows without an externalId use a deterministic fingerprint. Identical
- * fingerprinted rows remain ambiguous because legitimate repeated events can
- * share all visible fields. Reconciliation should resolve those separately.
+ * Conservative duplicate handling:
+ * - Exact repeated events with the same provider-scoped external ID and payload
+ *   are duplicates.
+ * - Reused external IDs with conflicting payloads are retained and flagged.
+ * - Fingerprint-only matches are retained and flagged because legitimate
+ *   repeated payments can share all visible fields.
  */
 export function deduplicateTransactions<T extends RawTransaction>(
   transactions: readonly T[],
   providerId?: string,
 ): DedupeResult<T> {
-  const seen = new Set<string>();
+  const seenExternal = new Map<string, string>();
+  const seenFingerprints = new Set<string>();
   const unique: T[] = [];
   const duplicates: T[] = [];
   const ambiguous: T[] = [];
 
   for (const transaction of transactions) {
+    const eventFingerprint = fingerprint(transaction);
+
     if (transaction.externalId && providerId?.trim()) {
-      const key = JSON.stringify(["external", providerId.trim(), transaction.externalId]);
-      if (seen.has(key)) duplicates.push(transaction);
-      else {
-        seen.add(key);
+      const key = JSON.stringify([providerId.trim(), transaction.externalId]);
+      const previousFingerprint = seenExternal.get(key);
+
+      if (previousFingerprint === undefined) {
+        seenExternal.set(key, eventFingerprint);
+        unique.push(transaction);
+      } else if (previousFingerprint === eventFingerprint) {
+        duplicates.push(transaction);
+      } else {
+        // Same provider ID but different data may be an update, reversal,
+        // provider defect, or ID collision. Never discard it automatically.
+        ambiguous.push(transaction);
         unique.push(transaction);
       }
       continue;
     }
 
     if (transaction.externalId && !providerId?.trim()) {
-      // Keep the row; identical IDs from different providers may refer to
-      // unrelated transactions, so the missing namespace makes dedupe unsafe.
       ambiguous.push(transaction);
       unique.push(transaction);
       continue;
     }
 
-    const key = JSON.stringify(["fingerprint", fingerprint(transaction)]);
-    if (seen.has(key)) {
+    if (seenFingerprints.has(eventFingerprint)) {
       ambiguous.push(transaction);
       unique.push(transaction);
       continue;
     }
-    seen.add(key);
+
+    seenFingerprints.add(eventFingerprint);
     unique.push(transaction);
   }
 
