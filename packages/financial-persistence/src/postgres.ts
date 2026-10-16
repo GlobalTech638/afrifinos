@@ -39,6 +39,7 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
     }
     for (const [transactionId, group] of grouped) {
       if (new Set(group.map((entry) => entry.currency)).size !== 1) throw new Error("Ledger entries for a transaction must use one currency");
+      if (new Set(group.map((entry) => entry.accountId)).size < 2) throw new Error("A transaction requires ledger entries for at least two distinct accounts");
       const debitTotal = group.filter((entry) => entry.direction === "debit").reduce((sum, entry) => sum + entry.amountMinor, 0n);
       const creditTotal = group.filter((entry) => entry.direction === "credit").reduce((sum, entry) => sum + entry.amountMinor, 0n);
       if (debitTotal <= 0n || debitTotal !== creditTotal) throw new Error("Ledger entries must have equal positive debit and credit totals");
