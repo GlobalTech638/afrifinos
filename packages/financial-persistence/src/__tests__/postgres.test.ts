@@ -167,6 +167,37 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries[1]?.text).toContain("JOIN accounts a");
   });
 
+  it("validates and writes standalone ledger entries inside one transaction", async () => {
+    const base = createClient();
+    let transactionCalls = 0;
+    const client: SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } = {
+      queries: base.queries,
+      async query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values: readonly unknown[] = []) {
+        return base.query<Row>(text, values);
+      },
+      async transaction<T>(work: (tx: SqlClient) => Promise<T>): Promise<T> {
+        transactionCalls += 1;
+        return work(this);
+      },
+    };
+    const repository = new PostgresFinancialRepository(client);
+
+    await repository.saveLedgerEntries(entries);
+
+    expect(transactionCalls).toBe(1);
+    expect(client.queries.map((query) =>
+      query.text.includes("SELECT amount_minor, currency FROM transactions") ? "transaction-validation" :
+      query.text.includes("JOIN accounts a") ? "entry-ownership" :
+      query.text.includes("INSERT INTO ledger_entries") ? "ledger-write" : "unexpected",
+    )).toEqual([
+      "transaction-validation",
+      "entry-ownership",
+      "ledger-write",
+      "entry-ownership",
+      "ledger-write",
+    ]);
+  });
+
   it("persists transaction and ledger entries in one transaction", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
