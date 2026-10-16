@@ -17,14 +17,21 @@ function tx(overrides: Partial<RawTransaction> = {}): RawTransaction {
 }
 
 describe("deduplicateTransactions", () => {
-  it("deduplicates repeated external IDs within the same provider", () => {
+  it("deduplicates exact repeated provider events", () => {
     const result = deduplicateTransactions([tx(), tx()], "mpesa");
     expect(result.unique).toHaveLength(1);
     expect(result.duplicates).toHaveLength(1);
     expect(result.ambiguous).toHaveLength(0);
   });
 
-  it("does not deduplicate equal IDs when provider namespace is missing", () => {
+  it("retains reused external IDs when payloads conflict", () => {
+    const result = deduplicateTransactions([tx(), tx({ amountMinor: 1500n })], "mpesa");
+    expect(result.unique).toHaveLength(2);
+    expect(result.duplicates).toHaveLength(0);
+    expect(result.ambiguous).toHaveLength(1);
+  });
+
+  it("does not deduplicate IDs when provider namespace is missing", () => {
     const result = deduplicateTransactions([tx(), tx()]);
     expect(result.unique).toHaveLength(2);
     expect(result.duplicates).toHaveLength(0);
