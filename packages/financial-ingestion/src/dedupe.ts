@@ -7,21 +7,25 @@ export interface DedupeResult<T extends RawTransaction> {
 }
 
 function fingerprint(transaction: RawTransaction): string {
-  return [
+  // JSON encoding avoids collisions when descriptions/counterparties contain delimiters.
+  return JSON.stringify([
     transaction.occurredAt,
     transaction.description.trim().toLowerCase().replace(/\s+/g, " "),
     String(transaction.amountMinor),
     transaction.currency,
     transaction.type ?? "",
     transaction.counterparty?.trim().toLowerCase() ?? "",
-  ].join("|");
+  ]);
 }
 
 /**
- * Deduplicates exact provider events by externalId when available.
- * Rows without an externalId use a deterministic fingerprint. This is
- * intentionally conservative and should be followed by reconciliation before
- * an import is treated as authoritative financial history.
+ * Deduplicates exact provider events by externalId when a provider namespace
+ * is known. Without that namespace, an external ID is not globally unique and
+ * is therefore not enough evidence to discard a row.
+ *
+ * Rows without an externalId use a deterministic fingerprint. Identical
+ * fingerprinted rows remain ambiguous because legitimate repeated events can
+ * share all visible fields. Reconciliation should resolve those separately.
  */
 export function deduplicateTransactions<T extends RawTransaction>(
   transactions: readonly T[],
@@ -33,17 +37,26 @@ export function deduplicateTransactions<T extends RawTransaction>(
   const ambiguous: T[] = [];
 
   for (const transaction of transactions) {
-    if (transaction.externalId) {
-      const key = `external:${providerId ?? "unknown"}:${transaction.externalId}`;
+    if (transaction.externalId && providerId?.trim()) {
+      const key = JSON.stringify(["external", providerId.trim(), transaction.externalId]);
       if (seen.has(key)) duplicates.push(transaction);
-      else { seen.add(key); unique.push(transaction); }
+      else {
+        seen.add(key);
+        unique.push(transaction);
+      }
       continue;
     }
 
-    const key = `fingerprint:${fingerprint(transaction)}`;
+    if (transaction.externalId && !providerId?.trim()) {
+      // Keep the row; identical IDs from different providers may refer to
+      // unrelated transactions, so the missing namespace makes dedupe unsafe.
+      ambiguous.push(transaction);
+      unique.push(transaction);
+      continue;
+    }
+
+    const key = JSON.stringify(["fingerprint", fingerprint(transaction)]);
     if (seen.has(key)) {
-      // Identical fingerprinted rows may be legitimate repeated cash events.
-      // Keep them out of the authoritative duplicate bucket until reconciliation.
       ambiguous.push(transaction);
       unique.push(transaction);
       continue;
