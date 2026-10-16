@@ -133,6 +133,20 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries).toHaveLength(0);
   });
 
+  it("rejects standalone ledger batches that reuse one account for both sides", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+    const sameAccount = [
+      entries[0]!,
+      { ...entries[1]!, accountId: entries[0]!.accountId },
+    ];
+
+    await expect(repository.saveLedgerEntries(sameAccount))
+      .rejects.toThrow("A transaction requires ledger entries for at least two distinct accounts");
+
+    expect(client.queries).toHaveLength(0);
+  });
+
   it("rejects direct ledger writes across owners", async () => {
     const client = createClient(undefined, false, undefined, undefined, undefined, {
       transactionOwnerId: "user-1",
