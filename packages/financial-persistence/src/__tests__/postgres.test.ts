@@ -162,8 +162,9 @@ describe("PostgresFinancialRepository", () => {
     await expect(repository.saveLedgerEntries(entries))
       .rejects.toThrow("Ledger entry currency must match both transaction and account currencies");
 
-    expect(client.queries).toHaveLength(1);
-    expect(client.queries[0]?.text).toContain("JOIN accounts a");
+    expect(client.queries).toHaveLength(2);
+    expect(client.queries[0]?.text).toContain("SELECT amount_minor, currency FROM transactions");
+    expect(client.queries[1]?.text).toContain("JOIN accounts a");
   });
 
   it("persists transaction and ledger entries in one transaction", async () => {
