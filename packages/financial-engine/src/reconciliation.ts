@@ -13,14 +13,16 @@ function normalizeDescription(value: string): string {
 }
 
 export function transactionFingerprint(transaction: RawTransaction): string {
-  return [
+  // JSON array encoding preserves field boundaries even when provider text
+  // contains delimiter characters.
+  return JSON.stringify([
     transaction.occurredAt,
     normalizeDescription(transaction.description),
     String(transaction.amountMinor),
     transaction.currency,
     transaction.type ?? "",
     normalizeDescription(transaction.counterparty ?? ""),
-  ].join("|");
+  ]);
 }
 
 export function identifyTransaction(
