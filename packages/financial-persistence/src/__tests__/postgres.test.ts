@@ -253,7 +253,7 @@ describe("PostgresFinancialRepository", () => {
             category_id: transaction.categoryId ?? null,
             amount_minor: "2500",
             currency: "KES",
-            source_kind: transaction.provenance.sourceKind,
+            source_kind: "provider_file",
           } as unknown as Row] };
         }
         return base.query<Row>(text, values);
