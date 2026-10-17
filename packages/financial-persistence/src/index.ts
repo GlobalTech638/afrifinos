@@ -44,7 +44,7 @@ export interface FinancialRepository {
   saveLedgerEntries(entries: readonly LedgerEntry[]): Promise<void>;
   getTransactionByProviderExternalId(ownerId: string, providerId: string, externalId: string): Promise<Transaction | null>;
   getTransactions(ownerId: string, from?: string, to?: string): Promise<readonly Transaction[]>;
-  getLedgerEntries(accountIds: readonly string[], from?: string, to?: string): Promise<readonly LedgerEntry[]>;
+  getLedgerEntries(ownerId: string, accountIds: readonly string[], from?: string, to?: string): Promise<readonly LedgerEntry[]>;
   getAssets(ownerId: string): Promise<readonly Asset[]>;
   getLiabilities(ownerId: string): Promise<readonly Liability[]>;
   getObligations(ownerId: string): Promise<readonly Obligation[]>;
