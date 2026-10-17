@@ -657,7 +657,7 @@ describe("PostgresFinancialRepository", () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
 
-    await expect(repository.getLedgerEntries([])).resolves.toEqual([]);
+    await expect(repository.getLedgerEntries("owner-1", [])).resolves.toEqual([]);
     expect(client.queries).toHaveLength(0);
   });
 });
