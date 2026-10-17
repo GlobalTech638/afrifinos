@@ -233,6 +233,86 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries[1]?.values[8]).toBe("2500");
   });
 
+  it("treats a matching provider payload as a duplicate without reposting its ledger", async () => {
+    const base = createClient();
+    const client: SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } = {
+      queries: base.queries,
+      async query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values: readonly unknown[] = []) {
+        if (text.includes("INSERT INTO transactions")) {
+          base.queries.push({ text, values });
+          return { rows: [] };
+        }
+        if (text.includes("FROM transactions") && text.includes("WHERE owner_id = $1 AND provider_id = $2 AND external_id = $3")) {
+          base.queries.push({ text, values });
+          return { rows: [{
+            type: transaction.type,
+            status: transaction.status,
+            occurred_at: transaction.occurredAt,
+            description: transaction.description ?? null,
+            counterparty: transaction.counterparty ?? null,
+            category_id: transaction.categoryId ?? null,
+            amount_minor: "2500",
+            currency: "KES",
+            source_kind: transaction.provenance.sourceKind,
+          } as unknown as Row] };
+        }
+        return base.query<Row>(text, values);
+      },
+      async transaction<T>(work: (tx: SqlClient) => Promise<T>): Promise<T> {
+        return work(this);
+      },
+    };
+    const providerTransaction: Transaction = {
+      ...transaction,
+      provenance: { sourceKind: "bank_import", providerId: "bank-a", externalId: "ext-1", importedAt: transaction.provenance.importedAt },
+    };
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveTransactionWithLedger(providerTransaction, entries)).resolves.toBe("duplicate");
+    expect(client.queries.some((query) => query.text.includes("INSERT INTO ledger_entries"))).toBe(false);
+    expect(client.queries.some((query) => query.text.includes("FOR SHARE") && query.text.includes("WHERE owner_id = $1 AND provider_id = $2"))).toBe(true);
+  });
+
+  it("rejects a provider identifier reused for a different transaction payload", async () => {
+    const base = createClient();
+    const client: SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } = {
+      queries: base.queries,
+      async query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values: readonly unknown[] = []) {
+        if (text.includes("INSERT INTO transactions")) {
+          base.queries.push({ text, values });
+          return { rows: [] };
+        }
+        if (text.includes("FROM transactions") && text.includes("WHERE owner_id = $1 AND provider_id = $2 AND external_id = $3")) {
+          base.queries.push({ text, values });
+          return { rows: [{
+            type: transaction.type,
+            status: transaction.status,
+            occurred_at: transaction.occurredAt,
+            description: "Different transaction description",
+            counterparty: transaction.counterparty ?? null,
+            category_id: transaction.categoryId ?? null,
+            amount_minor: "2500",
+            currency: "KES",
+            source_kind: "bank_import",
+          } as unknown as Row] };
+        }
+        return base.query<Row>(text, values);
+      },
+      async transaction<T>(work: (tx: SqlClient) => Promise<T>): Promise<T> {
+        return work(this);
+      },
+    };
+    const providerTransaction: Transaction = {
+      ...transaction,
+      provenance: { sourceKind: "bank_import", providerId: "bank-a", externalId: "ext-1", importedAt: transaction.provenance.importedAt },
+    };
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveTransactionWithLedger(providerTransaction, entries))
+      .rejects.toThrow("Provider transaction identifier conflicts with a different payload");
+    expect(client.queries.some((query) => query.text.includes("INSERT INTO ledger_entries"))).toBe(false);
+  });
+
   it("rejects balanced ledger entries that disagree with the transaction amount", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
