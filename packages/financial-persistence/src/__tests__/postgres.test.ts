@@ -264,7 +264,7 @@ describe("PostgresFinancialRepository", () => {
     };
     const providerTransaction: Transaction = {
       ...transaction,
-      provenance: { sourceKind: "bank_import", providerId: "bank-a", externalId: "ext-1", importedAt: transaction.provenance.importedAt },
+      provenance: { sourceKind: "provider_file", providerId: "bank-a", externalId: "ext-1", importedAt: transaction.provenance.importedAt },
     };
     const repository = new PostgresFinancialRepository(client);
 
@@ -293,7 +293,7 @@ describe("PostgresFinancialRepository", () => {
             category_id: transaction.categoryId ?? null,
             amount_minor: "2500",
             currency: "KES",
-            source_kind: "bank_import",
+            source_kind: "provider_file",
           } as unknown as Row] };
         }
         return base.query<Row>(text, values);
@@ -304,7 +304,7 @@ describe("PostgresFinancialRepository", () => {
     };
     const providerTransaction: Transaction = {
       ...transaction,
-      provenance: { sourceKind: "bank_import", providerId: "bank-a", externalId: "ext-1", importedAt: transaction.provenance.importedAt },
+      provenance: { sourceKind: "provider_file", providerId: "bank-a", externalId: "ext-1", importedAt: transaction.provenance.importedAt },
     };
     const repository = new PostgresFinancialRepository(client);
 
