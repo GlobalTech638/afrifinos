@@ -66,8 +66,11 @@ export function reconcileAccountBalance(
   if (observation.accountId !== accountId) {
     throw new Error(`Observation account ${observation.accountId} does not match ${accountId}`);
   }
-  if (!Number.isFinite(Date.parse(observation.observedAt))) {
-    throw new Error("Observation timestamp must be a valid date-time");
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(observation.observedAt) ||
+    !Number.isFinite(Date.parse(observation.observedAt))
+  ) {
+    throw new Error("Observation timestamp must be an ISO 8601 date-time");
   }
 
   let ledgerBalanceMinor = 0n;
