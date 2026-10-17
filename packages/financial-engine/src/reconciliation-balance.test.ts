@@ -64,7 +64,7 @@ describe("reconcileAccountBalance", () => {
 
   it("rejects an external observation ID without a provider namespace", () => {
     expect(() => reconcileAccountBalance("account-1", [entry()], observation({
-      providerId: undefined,
+      providerId: " ",
       externalObservationId: "snapshot-42",
     }))).toThrow("External observation ID requires a provider ID");
   });
