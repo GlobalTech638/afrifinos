@@ -49,6 +49,7 @@ export interface ReconciliationResult {
   readonly currency: CurrencyCode;
   readonly ledgerBalanceMinor: bigint;
   readonly observedBalanceMinor: bigint;
+  /** Provider-observed balance minus the ledger-derived balance; positive means the provider reports more funds. */
   readonly differenceMinor: bigint;
   readonly observedAt: string;
   readonly providerId?: string;
