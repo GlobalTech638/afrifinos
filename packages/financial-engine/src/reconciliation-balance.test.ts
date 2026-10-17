@@ -70,6 +70,11 @@ describe("reconcileAccountBalance", () => {
       .toThrow("Observation timestamp must be an ISO 8601 date-time");
   });
 
+  it("rejects an impossible calendar date in an observation timestamp", () => {
+    expect(() => reconcileAccountBalance("account-1", [entry()], observation({ observedAt: "2026-02-30T10:00:00.000Z" })))
+      .toThrow("Observation timestamp must be an ISO 8601 date-time");
+  });
+
   it("rejects an observation for a different account", () => {
     expect(() => reconcileAccountBalance("account-1", [entry()], observation({ accountId: "account-2" })))
       .toThrow("does not match");
