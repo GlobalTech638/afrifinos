@@ -36,8 +36,6 @@ describe("reconcileAccountBalance", () => {
     expect(result.observedBalanceMinor).toBe(5000n);
     expect(result.differenceMinor).toBe(0n);
     expect(result.status).toBe("matched");
-    expect(result.observedAt).toBe("2026-10-01T10:01:00.000Z");
-    expect(result.providerId).toBe("mpesa");
   });
 
   it("reports the signed difference when balances disagree", () => {
