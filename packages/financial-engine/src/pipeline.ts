@@ -31,16 +31,16 @@ export function processTransaction(
 
   return {
     ...normalized,
-    categoryId: match.categoryId,
+    ...(match.categoryId ? { categoryId: match.categoryId } : {}),
     categoryConfidence: match.confidence,
     categoryMatchedKeywords: match.matchedKeywords,
     categorySource: match.source,
     provenance: {
       sourceKind: options.sourceKind,
-      providerId: options.providerId,
-      externalId: normalized.externalId,
+      ...(options.providerId ? { providerId: options.providerId } : {}),
+      ...(normalized.externalId ? { externalId: normalized.externalId } : {}),
       importedAt: options.importedAt ?? new Date().toISOString(),
-      sourceHash: options.sourceHash,
+      ...(options.sourceHash ? { sourceHash: options.sourceHash } : {}),
     },
   };
 }

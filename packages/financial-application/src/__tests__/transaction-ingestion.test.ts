@@ -7,7 +7,12 @@ class InMemoryWriteRepository implements TransactionWriteRepository {
   readonly transactions: Transaction[] = [];
   readonly entries: LedgerEntry[] = [];
   readonly ownedAccounts = new Set(["mpesa", "bank", "expense", "income"]);
-  readonly duplicateTransactionIds = new Set<string>();
+  readonly accountCurrencies = new Map([["mpesa", "KES"], ["bank", "KES"], ["expense", "KES"], ["income", "KES"]]);
+  readonly providerTransactions = new Map<string, Transaction>();
+
+  async getTransactionByProviderExternalId(_ownerId: string, providerId: string, externalId: string): Promise<Transaction | null> {
+    return this.providerTransactions.get(`${providerId}:${externalId}`) ?? null;
+  }
 
   async assertAccountsOwnedBy(ownerId: string, accountIds: readonly string[]): Promise<void> {
     if (ownerId !== "user-1" || accountIds.some((accountId) => !this.ownedAccounts.has(accountId))) {
@@ -15,11 +20,16 @@ class InMemoryWriteRepository implements TransactionWriteRepository {
     }
   }
 
+  async assertAccountsCurrency(ownerId: string, accountIds: readonly string[], currency: string): Promise<void> {
+    if (ownerId !== "user-1" || accountIds.some((accountId) => this.accountCurrencies.get(accountId) !== currency)) {
+      throw new Error("Transaction currency must match both account currencies");
+    }
+  }
+
   async saveTransactionWithLedger(
     transaction: Transaction,
     entries: readonly LedgerEntry[],
   ): Promise<TransactionWriteResult> {
-    if (this.duplicateTransactionIds.has(transaction.transactionId)) return "duplicate";
     this.transactions.push(transaction);
     this.entries.push(...entries);
     return "inserted";
@@ -59,7 +69,12 @@ describe("ingestTransaction", () => {
 
   it("reports duplicates without creating ledger entries", async () => {
     const repository = new InMemoryWriteRepository();
-    repository.duplicateTransactionIds.add("tx-duplicate");
+    repository.providerTransactions.set("mpesa:external-duplicate", {
+      transactionId: "tx-duplicate", ownerId: "user-1", type: "expense", status: "posted",
+      occurredAt: "2026-09-14T08:00:00Z", description: "Naivas groceries",
+      total: { amountMinor: 2500n, currency: "KES" },
+      provenance: { sourceKind: "provider_api", providerId: "mpesa", externalId: "external-duplicate", importedAt: "2026-09-14T08:00:00Z" },
+    });
 
     const result = await ingestTransaction(repository, {
       ownerId: "user-1",
@@ -69,6 +84,7 @@ describe("ingestTransaction", () => {
       sourceKind: "provider_api",
       providerId: "mpesa",
       input: {
+        externalId: "external-duplicate",
         occurredAt: "2026-09-14T08:00:00Z",
         description: "Naivas groceries",
         amountMinor: 2500n,
@@ -102,6 +118,19 @@ describe("ingestTransaction", () => {
     expect(result.transaction.type).toBe("income");
     expect(result.transaction.total.amountMinor).toBe(100000n);
     expect(repository.entries[0]?.direction).toBe("credit");
+  });
+
+  it("rejects a transaction whose currency does not match both accounts", async () => {
+    const repository = new InMemoryWriteRepository();
+    repository.accountCurrencies.set("bank", "USD");
+
+    await expect(ingestTransaction(repository, {
+      ownerId: "user-1", primaryAccountId: "mpesa", counterAccountId: "bank",
+      transactionId: "tx-currency-mismatch", sourceKind: "manual",
+      input: { occurredAt: "2026-09-14T08:00:00Z", description: "Transfer", amountMinor: 2500n, currency: "KES" },
+    })).rejects.toThrow("Transaction currency must match both account currencies");
+    expect(repository.transactions).toHaveLength(0);
+    expect(repository.entries).toHaveLength(0);
   });
 
   it("rejects identical primary and counter accounts before persistence", async () => {

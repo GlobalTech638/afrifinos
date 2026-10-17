@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PostgresFinancialRepository, type SqlClient } from "../postgres.js";
 import type { Transaction, LedgerEntry } from "@afrifinos/financial-domain";
 
-function createClient(existingWatermark?: string, failSignalInsert = false): SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } {
+function createClient(existingWatermark?: string, failSignalInsert = false, conflictingLedgerEntryId?: string, ownedAccountCount?: number, matchingCurrencyCount?: number, ledgerOwnership = { transactionOwnerId: "user-1", accountOwnerId: "user-1", transactionCurrency: "KES", accountCurrency: "KES" }): SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } {
   let watermark = existingWatermark;
   const client = {
     queries: [] as Array<{ text: string; values: readonly unknown[] }>,
@@ -12,6 +12,32 @@ function createClient(existingWatermark?: string, failSignalInsert = false): Sql
         throw new Error("simulated signal row write failure");
       }
       let rows: Row[] = [];
+      if (text.includes("SELECT amount_minor, currency FROM transactions")) {
+        rows = [{ amount_minor: "2500", currency: "KES" } as unknown as Row];
+      }
+      if (text.includes("JOIN accounts a") && text.includes("FOR SHARE OF t, a")) {
+        rows = [{
+          transaction_owner_id: ledgerOwnership.transactionOwnerId,
+          transaction_currency: ledgerOwnership.transactionCurrency,
+          account_owner_id: ledgerOwnership.accountOwnerId,
+          account_currency: ledgerOwnership.accountCurrency,
+        } as unknown as Row];
+      }
+      if (text.includes("FROM accounts") && text.includes("FOR SHARE")) {
+        const accountIds = Array.isArray(values[1]) ? values[1] as string[] : [];
+        const ownedCount = Math.min(ownedAccountCount ?? accountIds.length, accountIds.length);
+        const currencyCount = Math.min(matchingCurrencyCount ?? ownedCount, ownedCount);
+        rows = accountIds.slice(0, ownedCount).map((id, index) => ({
+          id,
+          currency: index < currencyCount ? String(values[2] ?? "KES") : "USD",
+        } as unknown as Row));
+      }
+      if (text.includes("INSERT INTO transactions")) {
+        rows = [{ id: String(values[0]) } as unknown as Row];
+      }
+      if (text.includes("INSERT INTO ledger_entries")) {
+        rows = values[0] === conflictingLedgerEntryId ? [] : [{ id: String(values[0]) } as unknown as Row];
+      }
       if (text.includes("INSERT INTO financial_signal_reconciliations")) {
         const incoming = String(values[1]);
         if (watermark === undefined || Date.parse(incoming) > Date.parse(watermark)) {
@@ -39,16 +65,49 @@ const transaction: Transaction = {
   status: "posted",
   occurredAt: "2026-09-15T10:00:00Z",
   description: "Groceries",
-  total: { amountMinor: 2500n, currency: "KES" },
+  total: { amountMinor: 2500n, currency: "KES" as Transaction["total"]["currency"] },
   provenance: { sourceKind: "manual", importedAt: "2026-09-15T10:01:00Z" },
 };
 
 const entries: readonly LedgerEntry[] = [
-  { entryId: "txn-1:primary", transactionId: "txn-1", accountId: "cash", currency: "KES", amountMinor: 2500n, direction: "debit", postedAt: transaction.occurredAt },
-  { entryId: "txn-1:counter", transactionId: "txn-1", accountId: "expense", currency: "KES", amountMinor: 2500n, direction: "credit", postedAt: transaction.occurredAt },
+  { entryId: "txn-1:primary", transactionId: "txn-1", accountId: "cash", currency: "KES" as LedgerEntry["currency"], amountMinor: 2500n, direction: "debit", postedAt: transaction.occurredAt },
+  { entryId: "txn-1:counter", transactionId: "txn-1", accountId: "expense", currency: "KES" as LedgerEntry["currency"], amountMinor: 2500n, direction: "credit", postedAt: transaction.occurredAt },
 ];
 
 describe("PostgresFinancialRepository", () => {
+  it("scopes ledger reads to the authenticated owner", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await repository.getLedgerEntries("owner-1", ["cash", "expense"], "2026-09-01T00:00:00Z", "2026-10-01T00:00:00Z");
+
+    expect(client.queries).toHaveLength(1);
+    expect(client.queries[0]?.text).toContain("INNER JOIN accounts a ON a.id = le.account_id");
+    expect(client.queries[0]?.text).toContain("a.owner_id = $1");
+    expect(client.queries[0]?.values).toEqual([
+      "owner-1", "cash", "expense", "2026-09-01T00:00:00Z", "2026-10-01T00:00:00Z",
+    ]);
+  });
+
+  it("rejects blank owner IDs for ledger reads", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.getLedgerEntries(" ", ["cash"])).rejects.toThrow("ownerId cannot be empty");
+    expect(client.queries).toHaveLength(0);
+  });
+
+  it("uses bound parameters when verifying account ownership", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.assertAccountsOwnedBy("user-1", ["cash", "expense"]))
+      .rejects.toThrow("One or more accounts do not belong to the authenticated owner");
+
+    expect(client.queries[0]?.text).toContain("id IN ($2, $3)");
+    expect(client.queries[0]?.values).toEqual(["user-1", "cash", "expense"]);
+  });
+
   it("propagates signal row failures and skips subsequent reconciliation writes", async () => {
     let transactionRejected = false;
     const baseClient = createClient(undefined, true);
@@ -86,17 +145,308 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries.some((query) => query.text.includes("SELECT * FROM financial_signals"))).toBe(false);
   });
 
+  it("rejects unbalanced standalone ledger batches before writing", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    const unbalanced = [
+      entries[0]!,
+      { ...entries[1]!, amountMinor: entries[1]!.amountMinor - 1n },
+    ];
+    await expect(repository.saveLedgerEntries(unbalanced))
+      .rejects.toThrow("Ledger entries must have equal positive debit and credit totals");
+
+    expect(client.queries).toHaveLength(0);
+  });
+
+  it("rejects standalone ledger batches that reuse one account for both sides", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+    const sameAccount = [
+      entries[0]!,
+      { ...entries[1]!, accountId: entries[0]!.accountId },
+    ];
+
+    await expect(repository.saveLedgerEntries(sameAccount))
+      .rejects.toThrow("A transaction requires ledger entries for at least two distinct accounts");
+
+    expect(client.queries).toHaveLength(0);
+  });
+
+  it("rejects direct ledger writes across owners", async () => {
+    const client = createClient(undefined, false, undefined, undefined, undefined, {
+      transactionOwnerId: "user-1",
+      accountOwnerId: "user-2",
+      transactionCurrency: "KES",
+      accountCurrency: "KES",
+    });
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveLedgerEntries(entries))
+      .rejects.toThrow("Ledger account must belong to the transaction owner");
+
+    expect(client.queries).toHaveLength(2);
+    expect(client.queries[0]?.text).toContain("SELECT amount_minor, currency FROM transactions");
+    expect(client.queries[1]?.text).toContain("JOIN accounts a");
+  });
+
+  it("rejects direct ledger writes with a mismatched currency", async () => {
+    const client = createClient(undefined, false, undefined, undefined, undefined, {
+      transactionOwnerId: "user-1",
+      accountOwnerId: "user-1",
+      transactionCurrency: "KES",
+      accountCurrency: "USD",
+    });
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveLedgerEntries(entries))
+      .rejects.toThrow("Ledger entry currency must match both transaction and account currencies");
+
+    expect(client.queries).toHaveLength(2);
+    expect(client.queries[0]?.text).toContain("SELECT amount_minor, currency FROM transactions");
+    expect(client.queries[1]?.text).toContain("JOIN accounts a");
+  });
+
+  it("validates and writes standalone ledger entries inside one transaction", async () => {
+    const base = createClient();
+    let transactionCalls = 0;
+    const client: SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } = {
+      queries: base.queries,
+      async query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values: readonly unknown[] = []) {
+        return base.query<Row>(text, values);
+      },
+      async transaction<T>(work: (tx: SqlClient) => Promise<T>): Promise<T> {
+        transactionCalls += 1;
+        return work(this);
+      },
+    };
+    const repository = new PostgresFinancialRepository(client);
+
+    await repository.saveLedgerEntries(entries);
+
+    expect(transactionCalls).toBe(1);
+    expect(client.queries.map((query) =>
+      query.text.includes("SELECT amount_minor, currency FROM transactions") ? "transaction-validation" :
+      query.text.includes("JOIN accounts a") ? "entry-ownership" :
+      query.text.includes("INSERT INTO ledger_entries") ? "ledger-write" : "unexpected",
+    )).toEqual([
+      "transaction-validation",
+      "entry-ownership",
+      "ledger-write",
+      "entry-ownership",
+      "ledger-write",
+    ]);
+  });
+
   it("persists transaction and ledger entries in one transaction", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
 
     await repository.saveTransactionWithLedger(transaction, entries);
 
-    expect(client.queries).toHaveLength(3);
-    expect(client.queries[0]?.text).toContain("INSERT INTO transactions");
-    expect(client.queries[1]?.text).toContain("INSERT INTO ledger_entries");
-    expect(client.queries[2]?.text).toContain("INSERT INTO ledger_entries");
-    expect(client.queries[0]?.values[8]).toBe("2500");
+    expect(client.queries).toHaveLength(6);
+    expect(client.queries[0]?.text).toContain("FROM accounts");
+    expect(client.queries[1]?.text).toContain("INSERT INTO transactions");
+    expect(client.queries[1]?.text).toContain("ON CONFLICT (owner_id, provider_id, external_id) WHERE provider_id IS NOT NULL AND external_id IS NOT NULL DO NOTHING");
+    expect(client.queries[2]?.text).toContain("JOIN accounts a");
+    expect(client.queries[3]?.text).toContain("INSERT INTO ledger_entries");
+    expect(client.queries[4]?.text).toContain("JOIN accounts a");
+    expect(client.queries[5]?.text).toContain("INSERT INTO ledger_entries");
+    expect(client.queries[1]?.values[8]).toBe("2500");
+  });
+
+  it("treats a matching provider payload as a duplicate without reposting its ledger", async () => {
+    const base = createClient();
+    const client: SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } = {
+      queries: base.queries,
+      async query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values: readonly unknown[] = []) {
+        if (text.includes("INSERT INTO transactions")) {
+          base.queries.push({ text, values });
+          return { rows: [] };
+        }
+        if (text.includes("FROM transactions") && text.includes("WHERE owner_id = $1 AND provider_id = $2 AND external_id = $3")) {
+          base.queries.push({ text, values });
+          return { rows: [{
+            type: transaction.type,
+            status: transaction.status,
+            occurred_at: transaction.occurredAt,
+            description: transaction.description ?? null,
+            counterparty: transaction.counterparty ?? null,
+            category_id: transaction.categoryId ?? null,
+            amount_minor: "2500",
+            currency: "KES",
+            source_kind: "provider_file",
+          } as unknown as Row] };
+        }
+        return base.query<Row>(text, values);
+      },
+      async transaction<T>(work: (tx: SqlClient) => Promise<T>): Promise<T> {
+        return work(this);
+      },
+    };
+    const providerTransaction: Transaction = {
+      ...transaction,
+      provenance: { sourceKind: "provider_file", providerId: "bank-a", externalId: "ext-1", importedAt: transaction.provenance.importedAt },
+    };
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveTransactionWithLedger(providerTransaction, entries)).resolves.toBe("duplicate");
+    expect(client.queries.some((query) => query.text.includes("INSERT INTO ledger_entries"))).toBe(false);
+    expect(client.queries.some((query) => query.text.includes("FOR SHARE") && query.text.includes("WHERE owner_id = $1 AND provider_id = $2"))).toBe(true);
+  });
+
+  it("rejects a provider identifier reused for a different transaction payload", async () => {
+    const base = createClient();
+    const client: SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } = {
+      queries: base.queries,
+      async query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values: readonly unknown[] = []) {
+        if (text.includes("INSERT INTO transactions")) {
+          base.queries.push({ text, values });
+          return { rows: [] };
+        }
+        if (text.includes("FROM transactions") && text.includes("WHERE owner_id = $1 AND provider_id = $2 AND external_id = $3")) {
+          base.queries.push({ text, values });
+          return { rows: [{
+            type: transaction.type,
+            status: transaction.status,
+            occurred_at: transaction.occurredAt,
+            description: "Different transaction description",
+            counterparty: transaction.counterparty ?? null,
+            category_id: transaction.categoryId ?? null,
+            amount_minor: "2500",
+            currency: "KES",
+            source_kind: "provider_file",
+          } as unknown as Row] };
+        }
+        return base.query<Row>(text, values);
+      },
+      async transaction<T>(work: (tx: SqlClient) => Promise<T>): Promise<T> {
+        return work(this);
+      },
+    };
+    const providerTransaction: Transaction = {
+      ...transaction,
+      provenance: { sourceKind: "provider_file", providerId: "bank-a", externalId: "ext-1", importedAt: transaction.provenance.importedAt },
+    };
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveTransactionWithLedger(providerTransaction, entries))
+      .rejects.toThrow("Provider transaction identifier conflicts with a different payload");
+    expect(client.queries.some((query) => query.text.includes("INSERT INTO ledger_entries"))).toBe(false);
+  });
+
+  it("rejects blank provider and external transaction identifiers before persistence", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+    const blankProvider: Transaction = {
+      ...transaction,
+      provenance: { ...transaction.provenance, providerId: " ", externalId: "ext-1" },
+    };
+    const blankExternalId: Transaction = {
+      ...transaction,
+      provenance: { ...transaction.provenance, providerId: "bank-a", externalId: "  " },
+    };
+
+    await expect(repository.saveTransactionWithLedger(blankProvider, entries))
+      .rejects.toThrow("Provider identifier cannot be empty");
+    await expect(repository.saveTransactionWithLedger(blankExternalId, entries))
+      .rejects.toThrow("External transaction identifier cannot be empty");
+    expect(client.queries).toHaveLength(0);
+  });
+
+  it("rejects balanced ledger entries that disagree with the transaction amount", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+    const balancedButWrong = [
+      { ...entries[0]!, amountMinor: 2400n },
+      { ...entries[1]!, amountMinor: 2400n },
+    ];
+
+    await expect(repository.saveTransactionWithLedger(transaction, balancedButWrong))
+      .rejects.toThrow("Ledger total must match the transaction amount");
+
+    expect(client.queries).toHaveLength(0);
+  });
+
+  it("rejects negative ledger amounts before issuing persistence queries", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+    const negative = [{ ...entries[0]!, amountMinor: -1n }, entries[1]!];
+
+    await expect(repository.saveTransactionWithLedger(transaction, negative))
+      .rejects.toThrow("Ledger entries must match their transaction identity and currency and use non-negative amounts");
+
+    expect(client.queries).toHaveLength(0);
+  });
+
+  it("rejects an unbalanced ledger before issuing persistence queries", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+    const unbalanced = [entries[0]!, { ...entries[1]!, amountMinor: 2400n }];
+
+    await expect(repository.saveTransactionWithLedger(transaction, unbalanced))
+      .rejects.toThrow("Ledger entries must have equal positive debit and credit totals");
+
+    expect(client.queries).toHaveLength(0);
+  });
+
+  it("rejects ledger writes when accounts are not all owned by the transaction owner", async () => {
+    const client = createClient(undefined, false, undefined, 1, 1);
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveTransactionWithLedger(transaction, entries))
+      .rejects.toThrow("Ledger accounts must belong to the transaction owner");
+
+    expect(client.queries).toHaveLength(1);
+    expect(client.queries[0]?.text).toContain("FOR SHARE");
+  });
+
+  it("rejects ledger writes when an account currency differs from the transaction currency", async () => {
+    const client = createClient(undefined, false, undefined, 2, 1);
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveTransactionWithLedger(transaction, entries))
+      .rejects.toThrow("Ledger account currency must match transaction currency");
+
+    expect(client.queries).toHaveLength(1);
+    expect(client.queries[0]?.text).toContain("FOR SHARE");
+  });
+
+  it("writes a transaction and its ledger entries using a single transaction boundary", async () => {
+    const base = createClient();
+    let transactionCalls = 0;
+    const client: SqlClient & { queries: Array<{ text: string; values: readonly unknown[] }> } = {
+      queries: base.queries,
+      async query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values: readonly unknown[] = []) {
+        return base.query<Row>(text, values);
+      },
+      async transaction<T>(work: (tx: SqlClient) => Promise<T>): Promise<T> {
+        transactionCalls += 1;
+        return work(this);
+      },
+    };
+    const repository = new PostgresFinancialRepository(client);
+
+    await repository.saveTransactionWithLedger(transaction, entries);
+
+    expect(transactionCalls).toBe(1);
+    expect(client.queries.map((query) => query.text.includes("JOIN accounts a") ? "entry-ownership" : query.text.includes("FROM accounts") ? "batch-ownership" : query.text.includes("INSERT INTO transactions") ? "transaction" : "ledger"))
+      .toEqual(["batch-ownership", "transaction", "entry-ownership", "ledger", "entry-ownership", "ledger"]);
+  });
+
+  it("rejects reuse of a ledger entry id when the existing row has different data", async () => {
+    const client = createClient(undefined, false, entries[0]!.entryId);
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.saveTransactionWithLedger(transaction, entries))
+      .rejects.toThrow(`Ledger entry id conflict with different data: ${entries[0]!.entryId}`);
+
+    expect(client.queries).toHaveLength(4);
+    expect(client.queries[0]?.text).toContain("FROM accounts");
+    expect(client.queries[1]?.text).toContain("INSERT INTO transactions");
+    expect(client.queries[2]?.text).toContain("JOIN accounts a");
+    expect(client.queries[3]?.text).toContain("WHERE ledger_entries.transaction_id = EXCLUDED.transaction_id");
+    expect(client.queries[3]?.text).toContain("RETURNING id");
   });
 
 
@@ -307,7 +657,7 @@ describe("PostgresFinancialRepository", () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
 
-    await expect(repository.getLedgerEntries([])).resolves.toEqual([]);
+    await expect(repository.getLedgerEntries("owner-1", [])).resolves.toEqual([]);
     expect(client.queries).toHaveLength(0);
   });
 });

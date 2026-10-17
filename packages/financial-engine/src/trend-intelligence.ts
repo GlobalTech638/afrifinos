@@ -156,7 +156,7 @@ export function calculateSpendingDrivers(categoryTrends: readonly CategoryTrend[
         trend.changeMinor < 0n ? -trend.changeMinor : trend.changeMinor,
         totalAbsoluteChange,
       ),
-      direction: trend.changeMinor > 0n ? "increase" : "decrease",
+      direction: (trend.changeMinor > 0n ? "increase" : "decrease") as SpendingDriver["direction"],
     }))
     .sort((a, b) => {
       const aa = a.changeMinor < 0n ? -a.changeMinor : a.changeMinor;

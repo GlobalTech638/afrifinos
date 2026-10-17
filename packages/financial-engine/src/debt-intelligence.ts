@@ -31,7 +31,7 @@ export function calculateDebtService(
   }, 0n);
 
   const transactionDebtServiceMinor = transactions.reduce((total, transaction) => {
-    if (transaction.currency !== currency || transaction.type !== "expense" || transaction.categoryId !== "debt") return total;
+    if (transaction.total.currency !== currency || transaction.type !== "expense" || transaction.categoryId !== "debt") return total;
     return total + absolute(transaction.total.amountMinor);
   }, 0n);
 

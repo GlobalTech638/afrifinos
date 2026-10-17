@@ -3,6 +3,13 @@ import type { RawTransaction } from "@afrifinos/financial-engine";
 import { buildLedgerEntries, processTransaction } from "@afrifinos/financial-engine";
 import type { TransactionWriteRepository } from "@afrifinos/financial-persistence";
 
+export class TransactionInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TransactionInputError";
+  }
+}
+
 export interface IngestTransactionCommand {
   readonly ownerId: string;
   readonly primaryAccountId: string;
@@ -24,18 +31,18 @@ export interface IngestTransactionResult {
 }
 
 function validateCommand(command: IngestTransactionCommand): void {
-  if (!command.ownerId.trim()) throw new Error("ownerId cannot be empty");
-  if (!command.primaryAccountId.trim()) throw new Error("primaryAccountId cannot be empty");
-  if (!command.counterAccountId.trim()) throw new Error("counterAccountId cannot be empty");
-  if (!command.transactionId.trim()) throw new Error("transactionId cannot be empty");
+  if (!command.ownerId.trim()) throw new TransactionInputError("ownerId cannot be empty");
+  if (!command.primaryAccountId.trim()) throw new TransactionInputError("primaryAccountId cannot be empty");
+  if (!command.counterAccountId.trim()) throw new TransactionInputError("counterAccountId cannot be empty");
+  if (!command.transactionId.trim()) throw new TransactionInputError("transactionId cannot be empty");
   if (command.primaryAccountId === command.counterAccountId) {
-    throw new Error("Primary and counter accounts must be different");
+    throw new TransactionInputError("Primary and counter accounts must be different");
   }
   if (command.providerId !== undefined && !command.providerId.trim()) {
-    throw new Error("providerId cannot be empty when provided");
+    throw new TransactionInputError("providerId cannot be empty when provided");
   }
   if (command.input.externalId && !command.providerId) {
-    throw new Error("providerId is required when externalId is provided");
+    throw new TransactionInputError("providerId is required when externalId is provided");
   }
 }
 
@@ -44,10 +51,28 @@ export async function ingestTransaction(
   command: IngestTransactionCommand,
 ): Promise<IngestTransactionResult> {
   validateCommand(command);
-  await repository.assertAccountsOwnedBy(command.ownerId, [
-    command.primaryAccountId,
-    command.counterAccountId,
-  ]);
+  try {
+    await repository.assertAccountsOwnedBy(command.ownerId, [
+      command.primaryAccountId,
+      command.counterAccountId,
+    ]);
+  } catch (error) {
+    if (error instanceof Error && error.message === "One or more accounts do not belong to the authenticated owner") {
+      throw new TransactionInputError(error.message);
+    }
+    throw error;
+  }
+  try {
+    await repository.assertAccountsCurrency(command.ownerId, [
+      command.primaryAccountId,
+      command.counterAccountId,
+    ], command.input.currency);
+  } catch (error) {
+    if (error instanceof Error && error.message === "Transaction currency must match both account currencies") {
+      throw new TransactionInputError(error.message);
+    }
+    throw error;
+  }
 
   if (command.providerId && command.input.externalId) {
     const existing = await repository.getTransactionByProviderExternalId(
@@ -60,9 +85,9 @@ export async function ingestTransaction(
 
   const enriched = processTransaction(command.input, {
     sourceKind: command.sourceKind,
-    providerId: command.providerId,
-    importedAt: command.importedAt,
-    sourceHash: command.sourceHash,
+    ...(command.providerId ? { providerId: command.providerId } : {}),
+    ...(command.importedAt ? { importedAt: command.importedAt } : {}),
+    ...(command.sourceHash ? { sourceHash: command.sourceHash } : {}),
   });
 
   const transaction: Transaction = {
@@ -72,8 +97,8 @@ export async function ingestTransaction(
     status: "posted",
     occurredAt: enriched.occurredAt,
     description: enriched.description,
-    counterparty: enriched.counterparty,
-    categoryId: enriched.categoryId,
+    ...(enriched.counterparty ? { counterparty: enriched.counterparty } : {}),
+    ...(enriched.categoryId ? { categoryId: enriched.categoryId } : {}),
     total: {
       amountMinor: enriched.amountMinor < 0n ? -enriched.amountMinor : enriched.amountMinor,
       currency: enriched.currency,

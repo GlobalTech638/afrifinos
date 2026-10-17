@@ -159,8 +159,11 @@ export function detectRecurringTransactions(
     const sorted = [...group].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
     const intervals: number[] = [];
     for (let index = 1; index < sorted.length; index += 1) {
-      const previous = new Date(sorted[index - 1].occurredAt).getTime();
-      const current = new Date(sorted[index].occurredAt).getTime();
+      const previousTransaction = sorted[index - 1];
+      const currentTransaction = sorted[index];
+      if (!previousTransaction || !currentTransaction) continue;
+      const previous = new Date(previousTransaction.occurredAt).getTime();
+      const current = new Date(currentTransaction.occurredAt).getTime();
       const interval = (current - previous) / 86_400_000;
       if (!Number.isFinite(interval) || interval <= 0) continue;
       intervals.push(interval);
@@ -186,10 +189,12 @@ export function detectRecurringTransactions(
     const lastObserved = sorted[sorted.length - 1];
     if (!lastObserved) continue;
 
+    const firstObserved = sorted[0];
+    if (!firstObserved) continue;
     results.push({
       key,
       description: displayDescription(lastObserved),
-      type: sorted[0].type as "expense" | "income",
+      type: firstObserved.type as "expense" | "income",
       currency,
       amountMinor: averageAmountMinor,
       averageAmountMinor,
@@ -227,14 +232,25 @@ export function detectSpendingAnomalies(
     const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
     const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
     const standardDeviation = Math.sqrt(variance);
-    if (standardDeviation === 0) continue;
+    const sortedValues = [...values].sort((a, b) => a - b);
+    const median = sortedValues.length % 2 === 0
+      ? ((sortedValues[sortedValues.length / 2 - 1] ?? 0) + (sortedValues[sortedValues.length / 2] ?? 0)) / 2
+      : sortedValues[Math.floor(sortedValues.length / 2)] ?? 0;
+    const deviations = values.map((value) => Math.abs(value - median)).sort((a, b) => a - b);
+    const medianAbsoluteDeviation = deviations.length % 2 === 0
+      ? ((deviations[deviations.length / 2 - 1] ?? 0) + (deviations[deviations.length / 2] ?? 0)) / 2
+      : deviations[Math.floor(deviations.length / 2)] ?? 0;
+    if (standardDeviation === 0 && medianAbsoluteDeviation === 0) continue;
 
     for (const transaction of group) {
-      const zScore = (Number(effectiveAmount(transaction)) - mean) / standardDeviation;
+      const amount = Number(effectiveAmount(transaction));
+      const zScore = medianAbsoluteDeviation > 0
+        ? 0.6745 * (amount - median) / medianAbsoluteDeviation
+        : (amount - mean) / standardDeviation;
       if (zScore >= 2) {
         anomalies.push({
           transactionId: transaction.transactionId,
-          categoryId: transaction.categoryId,
+          ...(transaction.categoryId ? { categoryId: transaction.categoryId } : {}),
           amountMinor: effectiveAmount(transaction),
           baselineAverageMinor: mean,
           zScore: Number(zScore.toFixed(2)),

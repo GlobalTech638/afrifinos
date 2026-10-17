@@ -7,14 +7,14 @@ describe("calculateMonthlyDebtService", () => {
       { amountMinor: 12_000n, currency: "KES", cadence: "monthly", active: true },
       { amountMinor: 3_000n, currency: "KES", cadence: "quarterly", active: true },
       { amountMinor: 1_200n, currency: "KES", cadence: "annual", active: true },
-    ], "KES")).toBe(13_200n);
+    ], "KES")).toBe(13_100n);
   });
 
   it("normalizes weekly and biweekly payments without floating point", () => {
     expect(calculateMonthlyDebtService([
       { amountMinor: 1_200n, currency: "KES", cadence: "weekly", active: true },
       { amountMinor: 2_000n, currency: "KES", cadence: "biweekly", active: true },
-    ], "KES")).toBe(8_533n);
+    ], "KES")).toBe(9_533n);
   });
 
   it("ignores inactive, foreign-currency, non-positive and one-off sources", () => {

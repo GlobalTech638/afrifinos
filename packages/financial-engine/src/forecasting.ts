@@ -99,17 +99,6 @@ function obligationEvents(obligations: readonly Obligation[], horizonDays: numbe
   return events;
 }
 
-function distributeMonthlyAmount(amountMinor: bigint, days: number): bigint[] {
-  if (days <= 0) return [];
-  const result = Array<bigint>(days).fill(amountMinor / BigInt(days));
-  let remainder = amountMinor - result.reduce((sum, value) => sum + value, 0n);
-  for (let index = 0; remainder > 0n; index = (index + 1) % days) {
-    result[index] = (result[index] ?? 0n) + 1n;
-    remainder -= 1n;
-  }
-  return result;
-}
-
 function absolute(value: bigint): bigint {
   return value < 0n ? -value : value;
 }
@@ -135,8 +124,6 @@ export function forecastCashFlow(input: {
   const start = new Date(input.asOf ?? new Date().toISOString());
   if (Number.isNaN(start.getTime())) throw new Error(`Invalid forecast date: ${input.asOf}`);
 
-  const baselineIncome = distributeMonthlyAmount(averageMonthlyIncomeMinor, 30);
-  const baselineExpense = distributeMonthlyAmount(averageMonthlyExpenseMinor, 30);
   const recurringIncome = recurringEvents(input.recurring ?? [], horizonDays, "income", start);
   const recurringExpense = recurringEvents(input.recurring ?? [], horizonDays, "expense", start);
   const obligations = obligationEvents(input.obligations ?? [], horizonDays, start, input.currency);
@@ -149,9 +136,9 @@ export function forecastCashFlow(input: {
   let firstShortfallDate: string | undefined;
 
   for (let day = 1; day <= horizonDays; day += 1) {
-    const baselineDay = (day - 1) % 30;
-    const income = (baselineIncome[baselineDay] ?? 0n) + (recurringIncome.get(day) ?? 0n);
-    const expense = (baselineExpense[baselineDay] ?? 0n) + (recurringExpense.get(day) ?? 0n) + (obligations.get(day) ?? 0n);
+    const monthlyBoundary = day % 30 === 1;
+    const income = (monthlyBoundary ? averageMonthlyIncomeMinor : 0n) + (recurringIncome.get(day) ?? 0n);
+    const expense = (monthlyBoundary ? averageMonthlyExpenseMinor : 0n) + (recurringExpense.get(day) ?? 0n) + (obligations.get(day) ?? 0n)
     balance += income - expense;
     projectedIncomeMinor += income;
     projectedExpenseMinor += expense;

@@ -1,7 +1,7 @@
 import type { RawTransaction } from "@afrifinos/financial-engine";
 import { deduplicateTransactions } from "@afrifinos/financial-ingestion";
 import type { TransactionWriteRepository } from "@afrifinos/financial-persistence";
-import { ingestTransaction, type IngestTransactionResult } from "./transaction-ingestion.js";
+import { ingestTransaction, TransactionInputError, type IngestTransactionResult } from "./transaction-ingestion.js";
 
 export interface BatchIngestionFailure {
   readonly input: RawTransaction;
@@ -47,16 +47,16 @@ export async function ingestTransactionBatch(
         counterAccountId: command.counterAccountId,
         transactionId: command.transactionIdFor(input, index),
         sourceKind: command.sourceKind,
-        providerId: command.providerId,
-        importedAt: command.importedAt,
-        sourceHash: command.sourceHash,
+        ...(command.providerId ? { providerId: command.providerId } : {}),
+        ...(command.importedAt ? { importedAt: command.importedAt } : {}),
+        ...(command.sourceHash ? { sourceHash: command.sourceHash } : {}),
         input,
       }));
     } catch (error) {
       failures.push({
         input,
         index,
-        message: error instanceof Error ? error.message : "Transaction ingestion failed",
+        message: error instanceof TransactionInputError ? error.message : "Transaction ingestion failed",
       });
     }
   }
@@ -64,6 +64,7 @@ export async function ingestTransactionBatch(
   return {
     persisted,
     duplicates: deduplicated.duplicates,
+    ambiguous: deduplicated.ambiguous,
     failures,
   };
 }

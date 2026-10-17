@@ -33,13 +33,13 @@ export function normalizeTransaction(input: RawTransaction): NormalizedTransacti
 
   const type = input.type ?? inferTransactionType(description, input.amountMinor);
   return {
-    externalId: input.externalId,
+    ...(input.externalId ? { externalId: input.externalId } : {}),
     occurredAt: new Date(input.occurredAt).toISOString(),
     description,
     amountMinor: BigInt(input.amountMinor),
     currency: input.currency,
     type,
-    counterparty: input.counterparty?.trim() || undefined,
+    ...(input.counterparty?.trim() ? { counterparty: input.counterparty.trim() } : {}),
   };
 }
 
