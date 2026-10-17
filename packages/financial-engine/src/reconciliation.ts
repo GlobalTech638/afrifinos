@@ -50,6 +50,8 @@ export interface ReconciliationResult {
   readonly ledgerBalanceMinor: bigint;
   readonly observedBalanceMinor: bigint;
   readonly differenceMinor: bigint;
+  readonly observedAt: string;
+  readonly providerId?: string;
   readonly status: "matched" | "difference";
 }
 
