@@ -55,6 +55,16 @@ describe("reconcileAccountBalance", () => {
     expect(result.status).toBe("matched");
   });
 
+  it("rejects a blank account ID", () => {
+    expect(() => reconcileAccountBalance(" ", [entry()], observation({ accountId: " " })))
+      .toThrow("Account ID cannot be empty");
+  });
+
+  it("rejects an invalid provider observation timestamp", () => {
+    expect(() => reconcileAccountBalance("account-1", [entry()], observation({ observedAt: "not-a-date" })))
+      .toThrow("Observation timestamp must be a valid date-time");
+  });
+
   it("rejects an observation for a different account", () => {
     expect(() => reconcileAccountBalance("account-1", [entry()], observation({ accountId: "account-2" })))
       .toThrow("does not match");
