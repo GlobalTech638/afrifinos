@@ -62,7 +62,12 @@ describe("reconcileAccountBalance", () => {
 
   it("rejects an invalid provider observation timestamp", () => {
     expect(() => reconcileAccountBalance("account-1", [entry()], observation({ observedAt: "not-a-date" })))
-      .toThrow("Observation timestamp must be a valid date-time");
+      .toThrow("Observation timestamp must be an ISO 8601 date-time");
+  });
+
+  it("rejects a date-only observation timestamp", () => {
+    expect(() => reconcileAccountBalance("account-1", [entry()], observation({ observedAt: "2026-10-01" })))
+      .toThrow("Observation timestamp must be an ISO 8601 date-time");
   });
 
   it("rejects an observation for a different account", () => {
