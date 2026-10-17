@@ -60,8 +60,14 @@ export function reconcileAccountBalance(
   entries: readonly LedgerEntry[],
   observation: ProviderBalanceObservation,
 ): ReconciliationResult {
+  if (!accountId.trim()) {
+    throw new Error("Account ID cannot be empty");
+  }
   if (observation.accountId !== accountId) {
     throw new Error(`Observation account ${observation.accountId} does not match ${accountId}`);
+  }
+  if (!Number.isFinite(Date.parse(observation.observedAt))) {
+    throw new Error("Observation timestamp must be a valid date-time");
   }
 
   let ledgerBalanceMinor = 0n;
