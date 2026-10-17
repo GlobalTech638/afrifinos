@@ -313,6 +313,23 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries.some((query) => query.text.includes("INSERT INTO ledger_entries"))).toBe(false);
   });
 
+  it("rejects blank provider and external transaction identifiers before persistence", async () => {
+    const repository = new PostgresFinancialRepository(createClient());
+    const blankProvider: Transaction = {
+      ...transaction,
+      provenance: { ...transaction.provenance, providerId: " ", externalId: "ext-1" },
+    };
+    const blankExternalId: Transaction = {
+      ...transaction,
+      provenance: { ...transaction.provenance, providerId: "bank-a", externalId: "  " },
+    };
+
+    await expect(repository.saveTransactionWithLedger(blankProvider, entries))
+      .rejects.toThrow("Provider identifier cannot be empty");
+    await expect(repository.saveTransactionWithLedger(blankExternalId, entries))
+      .rejects.toThrow("External transaction identifier cannot be empty");
+  });
+
   it("rejects balanced ledger entries that disagree with the transaction amount", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
