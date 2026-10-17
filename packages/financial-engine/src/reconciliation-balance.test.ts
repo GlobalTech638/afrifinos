@@ -46,6 +46,19 @@ describe("reconcileAccountBalance", () => {
     expect(result.status).toBe("difference");
   });
 
+  it("reports a positive difference when the provider reports more than the ledger", () => {
+    const result = reconcileAccountBalance("account-1", [entry()], observation({ observedBalanceMinor: 5300n }));
+    expect(result.differenceMinor).toBe(300n);
+    expect(result.status).toBe("difference");
+  });
+
+  it("treats an account with no ledger entries as a zero ledger balance", () => {
+    const result = reconcileAccountBalance("account-1", [], observation({ observedBalanceMinor: 1250n }));
+    expect(result.ledgerBalanceMinor).toBe(0n);
+    expect(result.differenceMinor).toBe(1250n);
+    expect(result.status).toBe("difference");
+  });
+
   it("only sums entries for the account being reconciled", () => {
     const result = reconcileAccountBalance("account-1", [
       entry(),
