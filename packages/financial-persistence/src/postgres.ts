@@ -56,7 +56,45 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
       await this.insertLedgerEntries(tx, entries);
     });
   }
-  async saveTransactionWithLedger(transaction: Transaction, entries: readonly LedgerEntry[]): Promise<TransactionWriteResult> { const accountIds = [...new Set(entries.map((entry) => entry.accountId))]; if (!entries.length || entries.some((entry) => entry.transactionId !== transaction.transactionId || entry.currency !== transaction.total.currency || entry.amountMinor < 0n)) throw new Error("Ledger entries must match their transaction identity and currency and use non-negative amounts"); const debitTotal = entries.filter((entry) => entry.direction === "debit").reduce((sum, entry) => sum + entry.amountMinor, 0n); const creditTotal = entries.filter((entry) => entry.direction === "credit").reduce((sum, entry) => sum + entry.amountMinor, 0n); if (debitTotal <= 0n || debitTotal !== creditTotal) throw new Error("Ledger entries must have equal positive debit and credit totals"); if (debitTotal !== transaction.total.amountMinor) throw new Error("Ledger total must match the transaction amount"); if (accountIds.length < 2) throw new Error("A transaction requires ledger entries for at least two distinct accounts"); return this.client.transaction(async (tx) => { const ownership = await tx.query<{ id: string; currency: string }>(`SELECT id::text AS id, currency FROM accounts WHERE owner_id = $1 AND id::text = ANY($2::text[]) FOR SHARE`, [transaction.ownerId, accountIds]); if (ownership.rows.length !== accountIds.length) throw new Error("Ledger accounts must belong to the transaction owner"); if (ownership.rows.some((account) => account.currency !== transaction.total.currency)) throw new Error("Ledger account currency must match transaction currency"); const result = await tx.query<{ id: string }>(`INSERT INTO transactions (id, owner_id, type, status, occurred_at, description, counterparty, category_id, amount_minor, currency, source_kind, provider_id, external_id, imported_at, source_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (owner_id, provider_id, external_id) WHERE provider_id IS NOT NULL AND external_id IS NOT NULL DO NOTHING RETURNING id`, [transaction.transactionId, transaction.ownerId, transaction.type, transaction.status, transaction.occurredAt, transaction.description ?? null, transaction.counterparty ?? null, transaction.categoryId ?? null, transaction.total.amountMinor.toString(), transaction.total.currency, transaction.provenance.sourceKind, transaction.provenance.providerId ?? null, transaction.provenance.externalId ?? null, transaction.provenance.importedAt, transaction.provenance.sourceHash ?? null]); if (!result.rows.length) return "duplicate"; await this.insertLedgerEntries(tx, entries); return "inserted"; }); }
+  async saveTransactionWithLedger(transaction: Transaction, entries: readonly LedgerEntry[]): Promise<TransactionWriteResult> { const accountIds = [...new Set(entries.map((entry) => entry.accountId))]; if (!entries.length || entries.some((entry) => entry.transactionId !== transaction.transactionId || entry.currency !== transaction.total.currency || entry.amountMinor < 0n)) throw new Error("Ledger entries must match their transaction identity and currency and use non-negative amounts"); const debitTotal = entries.filter((entry) => entry.direction === "debit").reduce((sum, entry) => sum + entry.amountMinor, 0n); const creditTotal = entries.filter((entry) => entry.direction === "credit").reduce((sum, entry) => sum + entry.amountMinor, 0n); if (debitTotal <= 0n || debitTotal !== creditTotal) throw new Error("Ledger entries must have equal positive debit and credit totals"); if (debitTotal !== transaction.total.amountMinor) throw new Error("Ledger total must match the transaction amount"); if (accountIds.length < 2) throw new Error("A transaction requires ledger entries for at least two distinct accounts"); return this.client.transaction(async (tx) => { const ownership = await tx.query<{ id: string; currency: string }>(`SELECT id::text AS id, currency FROM accounts WHERE owner_id = $1 AND id::text = ANY($2::text[]) FOR SHARE`, [transaction.ownerId, accountIds]); if (ownership.rows.length !== accountIds.length) throw new Error("Ledger accounts must belong to the transaction owner"); if (ownership.rows.some((account) => account.currency !== transaction.total.currency)) throw new Error("Ledger account currency must match transaction currency"); const result = await tx.query<{ id: string }>(`INSERT INTO transactions (id, owner_id, type, status, occurred_at, description, counterparty, category_id, amount_minor, currency, source_kind, provider_id, external_id, imported_at, source_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (owner_id, provider_id, external_id) WHERE provider_id IS NOT NULL AND external_id IS NOT NULL DO NOTHING RETURNING id`, [transaction.transactionId, transaction.ownerId, transaction.type, transaction.status, transaction.occurredAt, transaction.description ?? null, transaction.counterparty ?? null, transaction.categoryId ?? null, transaction.total.amountMinor.toString(), transaction.total.currency, transaction.provenance.sourceKind, transaction.provenance.providerId ?? null, transaction.provenance.externalId ?? null, transaction.provenance.importedAt, transaction.provenance.sourceHash ?? null]); if (!result.rows.length) {
+      // A provider identifier is an idempotency key, not proof that the payload
+      // is unchanged. Do not silently discard a changed amount/date/counterparty
+      // when two imports race or a provider reuses an identifier.
+      if (transaction.provenance.providerId && transaction.provenance.externalId) {
+        const existing = await tx.query<{
+          type: Transaction["type"];
+          status: Transaction["status"];
+          occurred_at: string;
+          description: string | null;
+          counterparty: string | null;
+          category_id: string | null;
+          amount_minor: string | number;
+          currency: string;
+          source_kind: Transaction["provenance"]["sourceKind"];
+        }>(`SELECT type, status, occurred_at, description, counterparty, category_id,
+          amount_minor, currency, source_kind
+          FROM transactions
+          WHERE owner_id = $1 AND provider_id = $2 AND external_id = $3
+          FOR SHARE`, [transaction.ownerId, transaction.provenance.providerId, transaction.provenance.externalId]);
+        const row = existing.rows[0];
+        const samePayload = row !== undefined
+          && row.type === transaction.type
+          && row.status === transaction.status
+          && Date.parse(String(row.occurred_at)) === Date.parse(transaction.occurredAt)
+          && row.description === (transaction.description ?? null)
+          && row.counterparty === (transaction.counterparty ?? null)
+          && row.category_id === (transaction.categoryId ?? null)
+          && BigInt(row.amount_minor) === transaction.total.amountMinor
+          && row.currency === transaction.total.currency
+          && row.source_kind === transaction.provenance.sourceKind;
+        if (!samePayload) {
+          throw new Error("Provider transaction identifier conflicts with a different payload");
+        }
+      }
+      return "duplicate";
+    }
+    await this.insertLedgerEntries(tx, entries);
+    return "inserted"; }); }
   async getTransactions(ownerId: string, from?: string, to?: string): Promise<readonly Transaction[]> { const range = optionalRange(from, to); const result = await this.client.query<TransactionRow>(`SELECT id, owner_id, type, status, occurred_at, description, counterparty, category_id, amount_minor, currency, source_kind, provider_id, external_id, imported_at, source_hash FROM transactions WHERE owner_id = $1${range.clause} ORDER BY occurred_at ASC`, [ownerId, ...range.values]); return result.rows.map(transactionFromRow); }
   async getLedgerEntries(accountIds: readonly string[], from?: string, to?: string): Promise<readonly LedgerEntry[]> { if (!accountIds.length) return []; const placeholders = accountIds.map((_, index) => `$${index + 1}`).join(", "); const values: string[] = [...accountIds]; const clauses = [`account_id IN (${placeholders})`]; if (from) { values.push(from); clauses.push(`posted_at >= $${values.length}`); } if (to) { values.push(to); clauses.push(`posted_at < $${values.length}`); } const result = await this.client.query<LedgerRow>(`SELECT id, transaction_id, account_id, currency, amount_minor, direction, posted_at FROM ledger_entries WHERE ${clauses.join(" AND ")} ORDER BY posted_at ASC`, values); return result.rows.map(ledgerFromRow); }
   async getAssets(ownerId: string): Promise<readonly Asset[]> { const result = await this.client.query<Record<string, unknown>>(`SELECT id, owner_id, name, value_minor, currency, as_of, asset_type FROM assets WHERE owner_id = $1 ORDER BY as_of DESC`, [ownerId]); return result.rows.map((row) => ({ assetId: String(row.id), ownerId: String(row.owner_id), name: String(row.name), value: { amountMinor: BigInt(String(row.value_minor)), currency: requiredCurrency(String(row.currency)) }, assetType: String(row.asset_type) as Asset["assetType"], valuedAt: String(row.as_of) })); }
