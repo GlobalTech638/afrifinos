@@ -40,6 +40,35 @@ describe("reconcileAccountBalance", () => {
     expect(result.providerId).toBe("mpesa");
   });
 
+  it("generates the same observation key for the same snapshot", () => {
+    const first = reconcileAccountBalance("account-1", [entry()], observation());
+    const second = reconcileAccountBalance("account-1", [entry()], observation());
+    expect(first.observationKey).toBe(second.observationKey);
+  });
+
+  it("uses a provider observation ID as an account-scoped idempotency key", () => {
+    const first = reconcileAccountBalance("account-1", [entry()], observation({
+      externalObservationId: "snapshot-42",
+    }));
+    const replay = reconcileAccountBalance("account-1", [entry()], observation({
+      externalObservationId: "snapshot-42",
+      observedBalanceMinor: 5100n,
+    }));
+    expect(first.observationKey).toBe(replay.observationKey);
+    expect(first.observationKey).not.toBe(reconcileAccountBalance(
+      "account-2",
+      [entry({ accountId: "account-2" })],
+      observation({ accountId: "account-2", externalObservationId: "snapshot-42" }),
+    ).observationKey);
+  });
+
+  it("rejects an external observation ID without a provider namespace", () => {
+    expect(() => reconcileAccountBalance("account-1", [entry()], observation({
+      providerId: undefined,
+      externalObservationId: "snapshot-42",
+    }))).toThrow("External observation ID requires a provider ID");
+  });
+
   it("reports the signed difference when balances disagree", () => {
     const result = reconcileAccountBalance("account-1", [entry()], observation({ observedBalanceMinor: 4700n }));
     expect(result.differenceMinor).toBe(-300n);
