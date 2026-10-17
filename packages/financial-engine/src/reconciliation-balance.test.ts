@@ -75,6 +75,15 @@ describe("reconcileAccountBalance", () => {
       .toThrow("Observation timestamp must be an ISO 8601 date-time");
   });
 
+  it("accepts a valid timestamp whose timezone offset crosses a UTC date boundary", () => {
+    const result = reconcileAccountBalance(
+      "account-1",
+      [entry()],
+      observation({ observedAt: "2026-10-01T00:30:00+03:00" }),
+    );
+    expect(result.observedAt).toBe("2026-10-01T00:30:00+03:00");
+  });
+
   it("rejects an observation for a different account", () => {
     expect(() => reconcileAccountBalance("account-1", [entry()], observation({ accountId: "account-2" })))
       .toThrow("does not match");
