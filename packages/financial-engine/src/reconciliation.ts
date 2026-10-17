@@ -55,6 +55,21 @@ export interface ReconciliationResult {
   readonly status: "matched" | "difference";
 }
 
+function isValidObservationTimestamp(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match || !Number.isFinite(Date.parse(value))) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const calendarDate = new Date(0);
+  calendarDate.setUTCHours(0, 0, 0, 0);
+  calendarDate.setUTCFullYear(year, month - 1, day);
+  return calendarDate.getUTCFullYear() === year
+    && calendarDate.getUTCMonth() === month - 1
+    && calendarDate.getUTCDate() === day;
+}
+
 export function reconcileAccountBalance(
   accountId: string,
   entries: readonly LedgerEntry[],
@@ -66,11 +81,7 @@ export function reconcileAccountBalance(
   if (observation.accountId !== accountId) {
     throw new Error(`Observation account ${observation.accountId} does not match ${accountId}`);
   }
-  if (
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(observation.observedAt) ||
-    !Number.isFinite(Date.parse(observation.observedAt)) ||
-    new Date(observation.observedAt).toISOString().slice(0, 10) !== observation.observedAt.slice(0, 10)
-  ) {
+  if (!isValidObservationTimestamp(observation.observedAt)) {
     throw new Error("Observation timestamp must be an ISO 8601 date-time");
   }
 
