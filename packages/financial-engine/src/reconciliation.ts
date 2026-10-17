@@ -80,6 +80,8 @@ export function reconcileAccountBalance(
     ledgerBalanceMinor,
     observedBalanceMinor: observation.observedBalanceMinor,
     differenceMinor,
+    observedAt: observation.observedAt,
+    ...(observation.providerId ? { providerId: observation.providerId } : {}),
     status: differenceMinor === 0n ? "matched" : "difference",
   };
 }
