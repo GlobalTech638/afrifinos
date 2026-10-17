@@ -314,7 +314,8 @@ describe("PostgresFinancialRepository", () => {
   });
 
   it("rejects blank provider and external transaction identifiers before persistence", async () => {
-    const repository = new PostgresFinancialRepository(createClient());
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
     const blankProvider: Transaction = {
       ...transaction,
       provenance: { ...transaction.provenance, providerId: " ", externalId: "ext-1" },
@@ -328,6 +329,7 @@ describe("PostgresFinancialRepository", () => {
       .rejects.toThrow("Provider identifier cannot be empty");
     await expect(repository.saveTransactionWithLedger(blankExternalId, entries))
       .rejects.toThrow("External transaction identifier cannot be empty");
+    expect(client.queries).toHaveLength(0);
   });
 
   it("rejects balanced ledger entries that disagree with the transaction amount", async () => {
