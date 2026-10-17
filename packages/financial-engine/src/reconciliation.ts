@@ -42,6 +42,8 @@ export interface ProviderBalanceObservation {
   readonly observedBalanceMinor: bigint;
   readonly observedAt: string;
   readonly providerId?: string;
+  /** Provider-supplied stable ID for this balance snapshot, when available. */
+  readonly externalObservationId?: string;
 }
 
 export interface ReconciliationResult {
@@ -53,6 +55,7 @@ export interface ReconciliationResult {
   readonly differenceMinor: bigint;
   readonly observedAt: string;
   readonly providerId?: string;
+  readonly observationKey: string;
   readonly status: "matched" | "difference";
 }
 
@@ -69,6 +72,35 @@ function isValidObservationTimestamp(value: string): boolean {
   return calendarDate.getUTCFullYear() === year
     && calendarDate.getUTCMonth() === month - 1
     && calendarDate.getUTCDate() === day;
+}
+
+/**
+ * Produces a deterministic idempotency key for a provider balance observation.
+ * Provider observation IDs are scoped by account and provider; without one,
+ * the full observation payload is used so distinct snapshots remain distinct.
+ */
+export function reconciliationObservationKey(observation: ProviderBalanceObservation): string {
+  if (observation.externalObservationId !== undefined) {
+    if (!observation.externalObservationId.trim()) {
+      throw new Error("External observation ID cannot be empty");
+    }
+    if (!observation.providerId?.trim()) {
+      throw new Error("External observation ID requires a provider ID");
+    }
+    return JSON.stringify([
+      observation.accountId,
+      observation.providerId,
+      observation.externalObservationId,
+    ]);
+  }
+
+  return JSON.stringify([
+    observation.accountId,
+    observation.providerId ?? "",
+    observation.currency,
+    observation.observedAt,
+    observation.observedBalanceMinor.toString(),
+  ]);
 }
 
 export function reconcileAccountBalance(
@@ -104,6 +136,7 @@ export function reconcileAccountBalance(
     differenceMinor,
     observedAt: observation.observedAt,
     ...(observation.providerId ? { providerId: observation.providerId } : {}),
+    observationKey: reconciliationObservationKey(observation),
     status: differenceMinor === 0n ? "matched" : "difference",
   };
 }
