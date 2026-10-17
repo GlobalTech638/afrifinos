@@ -75,6 +75,28 @@ const entries: readonly LedgerEntry[] = [
 ];
 
 describe("PostgresFinancialRepository", () => {
+  it("scopes ledger reads to the authenticated owner", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await repository.getLedgerEntries("owner-1", ["cash", "expense"], "2026-09-01T00:00:00Z", "2026-10-01T00:00:00Z");
+
+    expect(client.queries).toHaveLength(1);
+    expect(client.queries[0]?.text).toContain("INNER JOIN accounts a ON a.id = le.account_id");
+    expect(client.queries[0]?.text).toContain("a.owner_id = $1");
+    expect(client.queries[0]?.values).toEqual([
+      "owner-1", "cash", "expense", "2026-09-01T00:00:00Z", "2026-10-01T00:00:00Z",
+    ]);
+  });
+
+  it("rejects blank owner IDs for ledger reads", async () => {
+    const client = createClient();
+    const repository = new PostgresFinancialRepository(client);
+
+    await expect(repository.getLedgerEntries(" ", ["cash"])).rejects.toThrow("ownerId cannot be empty");
+    expect(client.queries).toHaveLength(0);
+  });
+
   it("uses bound parameters when verifying account ownership", async () => {
     const client = createClient();
     const repository = new PostgresFinancialRepository(client);
