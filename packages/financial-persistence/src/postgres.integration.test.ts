@@ -222,6 +222,46 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     }
   });
 
+  it("serializes concurrent complete postings for the same transaction", async () => {
+    const ids = await seed("owner-concurrent-posting", "concurrent-posting");
+    const concurrentPool = new Pool({
+      connectionString: databaseUrl,
+      max: 4,
+      options: `-c search_path=${schema},public`,
+    });
+
+    async function postPair() {
+      const client = await concurrentPool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
+          [randomUUID(), ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
+        );
+        await client.query("COMMIT");
+        return "committed" as const;
+      } catch {
+        await client.query("ROLLBACK").catch(() => undefined);
+        return "rejected" as const;
+      } finally {
+        client.release();
+      }
+    }
+
+    try {
+      const outcomes = await Promise.all([postPair(), postPair()]);
+      expect(outcomes.filter((outcome) => outcome === "committed")).toHaveLength(1);
+      expect(outcomes.filter((outcome) => outcome === "rejected")).toHaveLength(1);
+      const result = await concurrentPool.query(
+        "SELECT COUNT(*)::int AS count FROM ledger_entries WHERE transaction_id = $1",
+        [ids.transactionId],
+      );
+      expect(result.rows[0]?.count).toBe(2);
+    } finally {
+      await concurrentPool.end();
+    }
+  });
+
   it("rejects a transaction amount update that would unbalance existing postings", async () => {
     const ids = await seed("owner-amount-update", "amount-update");
     await query(
