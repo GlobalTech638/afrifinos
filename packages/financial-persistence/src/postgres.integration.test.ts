@@ -9,7 +9,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
   const admin = new Pool({ connectionString: databaseUrl, max: 1 });
   const pool = new Pool({
     connectionString: databaseUrl,
-    max: 2,
+    max: 1,
     options: `-c search_path=${schema},public`,
   });
 
@@ -22,6 +22,9 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
 
     const client = await pool.connect();
     try {
+      // Set the schema explicitly on the migration connection. Keep the pool
+      // single-connection so subsequent test queries use the same isolated path.
+      await client.query(`SET search_path TO "${schema}", public`);
       for (const file of files) {
         await client.query("BEGIN");
         try {
