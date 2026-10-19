@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -86,7 +87,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
       await client.query("BEGIN");
       await client.query(
         "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
-        [`debit-${ids.transactionId}`, ids.transactionId, ids.debitAccountId, `credit-${ids.transactionId}`, ids.creditAccountId],
+        [randomUUID(), ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
       );
       await client.query("COMMIT");
     } catch (error) {
@@ -108,8 +109,8 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     );
 
     await expect(query(
-      "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ('cross-owner-entry', $1, 'foreign-account', 'KES', 100, 'debit', now())",
-      [transaction.transactionId],
+      "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($2, $1, 'foreign-account', 'KES', 100, 'debit', now())",
+      [transaction.transactionId, randomUUID()],
     )).rejects.toThrow(/Ledger account must belong to the transaction owner/);
   });
 
@@ -121,7 +122,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
       await client.query("BEGIN");
       await client.query(
         "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now())",
-        [`debit-${ids.transactionId}`, ids.transactionId, ids.debitAccountId],
+        [randomUUID(), ids.transactionId, ids.debitAccountId],
       );
       await expect(client.query("COMMIT"))
         .rejects.toThrow(/at least two distinct accounts/);
