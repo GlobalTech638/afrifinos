@@ -81,9 +81,13 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
 
   it("enforces provider transaction idempotency within an owner namespace", async () => {
     await query("INSERT INTO users (id) VALUES ($1)", ["owner-provider-idempotency"]);
+    await query("INSERT INTO providers (id, name) VALUES ($1, $2)", [
+      "00000000-0000-4000-8000-00000000000a",
+      "Bank A",
+    ]);
     const insert = `INSERT INTO transactions
       (id, owner_id, type, occurred_at, amount_minor, currency, source_kind, provider_id, external_id)
-      VALUES ($1, $2, 'expense', now(), 100, 'KES', 'provider_file', 'bank-a', 'statement-row-1')
+      VALUES ($1, $2, 'expense', now(), 100, 'KES', 'provider_file', '00000000-0000-4000-8000-00000000000a', 'statement-row-1')
       ON CONFLICT (owner_id, provider_id, external_id)
       WHERE provider_id IS NOT NULL AND external_id IS NOT NULL
       DO NOTHING
@@ -96,7 +100,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
 
     const stored = await query(
       "SELECT id FROM transactions WHERE owner_id = $1 AND provider_id = $2 AND external_id = $3",
-      ["owner-provider-idempotency", "bank-a", "statement-row-1"],
+      ["owner-provider-idempotency", "00000000-0000-4000-8000-00000000000a", "statement-row-1"],
     );
     expect(stored.rows).toEqual([{ id: "provider-txn-first" }]);
   });
@@ -105,6 +109,12 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     await query("INSERT INTO users (id) VALUES ($1), ($2)", [
       "owner-provider-scope-a",
       "owner-provider-scope-b",
+    ]);
+    await query("INSERT INTO providers (id, name) VALUES ($1, $2), ($3, $4)", [
+      "00000000-0000-4000-8000-00000000000a",
+      "Bank A",
+      "00000000-0000-4000-8000-00000000000b",
+      "Bank B",
     ]);
     const insert = `INSERT INTO transactions
       (id, owner_id, type, occurred_at, amount_minor, currency, source_kind, provider_id, external_id)
@@ -117,7 +127,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     const firstOwner = await query(insert, [
       "provider-scope-a",
       "owner-provider-scope-a",
-      "bank-a",
+      "00000000-0000-4000-8000-00000000000a",
     ]);
     const secondOwner = await query(insert, [
       "provider-scope-b",
@@ -127,7 +137,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     const secondProvider = await query(insert, [
       "provider-scope-c",
       "owner-provider-scope-a",
-      "bank-b",
+      "00000000-0000-4000-8000-00000000000b",
     ]);
 
     expect(firstOwner.rows).toHaveLength(1);
