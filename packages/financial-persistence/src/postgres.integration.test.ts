@@ -18,7 +18,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     await admin.query(`CREATE SCHEMA "${schema}"`);
     const directory = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
     const files = (await readdir(directory))
-      .filter((file) => /^\\d+_.*\\.sql$/.test(file))
+      .filter((file) => /^\d+_.*\.sql$/.test(file))
       .sort();
     if (files.length === 0) throw new Error("No SQL migrations found in " + directory);
 
