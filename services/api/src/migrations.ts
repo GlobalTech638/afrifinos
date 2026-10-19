@@ -13,6 +13,7 @@ const migrationFiles = [
   "008_financial_signal_reconciliation_order.sql",
   "009_owner_scoped_transaction_idempotency.sql",
   "010_ledger_entry_integrity_trigger.sql",
+  "011_deferred_balanced_ledger.sql",
 ] as const;
 
 export async function loadApiMigrations(): Promise<readonly Migration[]> {
