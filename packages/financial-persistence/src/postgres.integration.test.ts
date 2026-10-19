@@ -112,9 +112,9 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     ]);
     await query("INSERT INTO providers (id, name) VALUES ($1, $2), ($3, $4)", [
       "00000000-0000-4000-8000-00000000000a",
-      "Bank A",
+      "Scope Bank A",
       "00000000-0000-4000-8000-00000000000b",
-      "Bank B",
+      "Scope Bank B",
     ]);
     const insert = `INSERT INTO transactions
       (id, owner_id, type, occurred_at, amount_minor, currency, source_kind, provider_id, external_id)
