@@ -239,10 +239,13 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
           [randomUUID(), ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
         );
         await client.query("COMMIT");
-        return "committed" as const;
-      } catch {
+        return { status: "committed" as const };
+      } catch (error) {
+        const code = typeof error === "object" && error !== null && "code" in error
+          ? String(error.code)
+          : undefined;
         await client.query("ROLLBACK").catch(() => undefined);
-        return "rejected" as const;
+        return { status: "rejected" as const, code };
       } finally {
         client.release();
       }
@@ -250,8 +253,12 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
 
     try {
       const outcomes = await Promise.all([postPair(), postPair()]);
-      expect(outcomes.filter((outcome) => outcome === "committed")).toHaveLength(1);
-      expect(outcomes.filter((outcome) => outcome === "rejected")).toHaveLength(1);
+      expect(outcomes.filter((outcome) => outcome.status === "committed")).toHaveLength(1);
+      const rejected = outcomes.filter((outcome) => outcome.status === "rejected");
+      expect(rejected).toHaveLength(1);
+      // The loser must fail because the deferred ledger invariant is violated,
+      // not because of a deadlock, connection failure, or unrelated SQL error.
+      expect(rejected[0]?.code).toBe("23514");
       const result = await concurrentPool.query(
         "SELECT COUNT(*)::int AS count FROM ledger_entries WHERE transaction_id = $1",
         [ids.transactionId],
