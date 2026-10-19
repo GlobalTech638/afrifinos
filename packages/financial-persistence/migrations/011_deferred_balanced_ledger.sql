@@ -118,7 +118,7 @@ BEGIN
 
   FOR transaction_id_to_lock IN
     SELECT DISTINCT candidate_id
-      FROM unnest(transaction_ids) AS candidate_id
+      FROM unnest(transaction_ids) AS ids(candidate_id)
       WHERE candidate_id IS NOT NULL
       ORDER BY candidate_id
   LOOP
