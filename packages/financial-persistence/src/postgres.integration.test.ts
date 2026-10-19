@@ -136,7 +136,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     const ids = await seed("owner-amount-update", "amount-update");
     await query(
       "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
-      [`debit-${ids.transactionId}`, ids.transactionId, ids.debitAccountId, `credit-${ids.transactionId}`, ids.creditAccountId],
+      [randomUUID(), ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
     );
     const client = await pool.connect();
     try {
