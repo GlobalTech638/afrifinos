@@ -132,6 +132,32 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     }
   });
 
+  it("rejects a ledger entry whose currency differs from its account and transaction", async () => {
+    const ids = await seed("owner-currency-mismatch", "currency-mismatch");
+    await expect(query(
+      "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'USD', 100, 'debit', now())",
+      [randomUUID(), ids.transactionId, ids.debitAccountId],
+    )).rejects.toThrow(/Ledger entry currency must match transaction and account currencies/);
+  });
+
+  it("rejects unequal debit and credit totals at transaction commit", async () => {
+    const ids = await seed("owner-unbalanced", "unbalanced");
+    const client = await pool.connect();
+    try {
+      await client.query(`SET search_path TO "${schema}", public`);
+      await client.query("BEGIN");
+      await client.query(
+        "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 90, 'credit', now())",
+        [randomUUID(), ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
+      );
+      await expect(client.query("COMMIT"))
+        .rejects.toThrow(/equal positive debit and credit totals/);
+      await client.query("ROLLBACK");
+    } finally {
+      client.release();
+    }
+  });
+
   it("rejects a transaction amount update that would unbalance existing postings", async () => {
     const ids = await seed("owner-amount-update", "amount-update");
     await query(
