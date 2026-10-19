@@ -46,13 +46,23 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     await admin.end();
   });
 
+  async function query(text: string, values: readonly unknown[] = []) {
+    const client = await pool.connect();
+    try {
+      await client.query(`SET search_path TO "${schema}", public`);
+      return await client.query(text, [...values]);
+    } finally {
+      client.release();
+    }
+  }
+
   async function seed(ownerId: string, suffix: string) {
-    await pool.query("INSERT INTO users (id) VALUES ($1)", [ownerId]);
-    await pool.query(
+    await query("INSERT INTO users (id) VALUES ($1)", [ownerId]);
+    await query(
       "INSERT INTO accounts (id, owner_id, name, type, currency) VALUES ($1, $2, $3, 'cash', 'KES'), ($4, $2, $5, 'other', 'KES')",
       [`cash-${suffix}`, ownerId, "Cash", `expense-${suffix}`, "Expense"],
     );
-    await pool.query(
+    await query(
       "INSERT INTO transactions (id, owner_id, type, occurred_at, amount_minor, currency, source_kind) VALUES ($1, $2, 'expense', now(), 100, 'KES', 'manual')",
       [`txn-${suffix}`, ownerId],
     );
@@ -63,6 +73,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     const ids = await seed("owner-balanced", "balanced");
     const client = await pool.connect();
     try {
+      await client.query(`SET search_path TO "${schema}", public`);
       await client.query("BEGIN");
       await client.query(
         "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
@@ -75,19 +86,19 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     } finally {
       client.release();
     }
-    const result = await pool.query(`SELECT COUNT(*)::int AS count FROM "${schema}".ledger_entries WHERE transaction_id = $1`, [ids.transactionId]);
+    const result = await query("SELECT COUNT(*)::int AS count FROM ledger_entries WHERE transaction_id = $1", [ids.transactionId]);
     expect(result.rows[0]?.count).toBe(2);
   });
 
   it("rejects a ledger entry that crosses owner boundaries", async () => {
     const transaction = await seed("owner-txn", "cross-owner-txn");
-    await pool.query("INSERT INTO users (id) VALUES ($1)", ["owner-account"]);
-    await pool.query(
+    await query("INSERT INTO users (id) VALUES ($1)", ["owner-account"]);
+    await query(
       "INSERT INTO accounts (id, owner_id, name, type, currency) VALUES ($1, $2, 'Foreign account', 'cash', 'KES')",
       ["foreign-account", "owner-account"],
     );
 
-    await expect(pool.query(
+    await expect(query(
       "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ('cross-owner-entry', $1, 'foreign-account', 'KES', 100, 'debit', now())",
       [transaction.transactionId],
     )).rejects.toThrow(/Ledger account must belong to the transaction owner/);
@@ -97,6 +108,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     const ids = await seed("owner-incomplete", "incomplete");
     const client = await pool.connect();
     try {
+      await client.query(`SET search_path TO "${schema}", public`);
       await client.query("BEGIN");
       await client.query(
         "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now())",
@@ -112,12 +124,13 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
 
   it("rejects a transaction amount update that would unbalance existing postings", async () => {
     const ids = await seed("owner-amount-update", "amount-update");
-    await pool.query(
+    await query(
       "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
       [`debit-${ids.transactionId}`, ids.transactionId, ids.debitAccountId, `credit-${ids.transactionId}`, ids.creditAccountId],
     );
     const client = await pool.connect();
     try {
+      await client.query(`SET search_path TO "${schema}", public`);
       await client.query("BEGIN");
       await client.query("UPDATE transactions SET amount_minor = 200 WHERE id = $1", [ids.transactionId]);
       await expect(client.query("COMMIT")).rejects.toThrow(/Ledger total must match the transaction amount/);
