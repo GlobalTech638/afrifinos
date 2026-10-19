@@ -224,6 +224,9 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
 
   it("serializes concurrent complete postings for the same transaction", async () => {
     const ids = await seed("owner-concurrent-posting", "concurrent-posting");
+    await query(
+      "INSERT INTO accounts (id, owner_id, name, type, currency) VALUES ('cash-concurrent-second', 'owner-concurrent-posting', 'Second cash', 'cash', 'KES'), ('expense-concurrent-second', 'owner-concurrent-posting', 'Second expense', 'other', 'KES')",
+    );
     const concurrentPool = new Pool({
       connectionString: databaseUrl,
       max: 4,
@@ -236,7 +239,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     const bothReady = new Promise<void>((resolve) => { signalBothReady = resolve; });
     const startAttempts = new Promise<void>((resolve) => { releaseAttempts = resolve; });
 
-    async function postPair() {
+    async function postPair(debitAccountId: string, creditAccountId: string) {
       const client = await concurrentPool.connect();
       try {
         await client.query("BEGIN");
@@ -245,7 +248,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
         await startAttempts;
         await client.query(
           "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
-          [randomUUID(), ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
+          [randomUUID(), ids.transactionId, debitAccountId, randomUUID(), creditAccountId],
         );
         await client.query("COMMIT");
         return { status: "committed" as const };
@@ -261,7 +264,10 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     }
 
     try {
-      const attempts = Promise.all([postPair(), postPair()]);
+      const attempts = Promise.all([
+        postPair(ids.debitAccountId, ids.creditAccountId),
+        postPair("cash-concurrent-second", "expense-concurrent-second"),
+      ]);
       await bothReady;
       releaseAttempts();
       const outcomes = await attempts;
