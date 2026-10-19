@@ -46,7 +46,7 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
     }
     await this.client.transaction(async (tx) => {
       for (const [transactionId, group] of grouped) {
-        const transaction = await tx.query<{ amount_minor: string | number; currency: string }>(`SELECT amount_minor, currency FROM transactions WHERE id = $1 FOR SHARE`, [transactionId]);
+        const transaction = await tx.query<{ amount_minor: string | number; currency: string }>(`SELECT amount_minor, currency FROM transactions WHERE id = $1 FOR UPDATE`, [transactionId]);
         const row = transaction.rows[0];
         if (!row) throw new Error("Ledger transaction does not exist");
         if (String(row.currency) !== group[0]?.currency) throw new Error("Ledger entry currency must match transaction currency");
