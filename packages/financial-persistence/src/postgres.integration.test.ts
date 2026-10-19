@@ -199,6 +199,29 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     )).rejects.toThrow(/Ledger accounts must match transaction owner and currency/);
   });
 
+  it("rejects deleting one entry from an otherwise balanced posting", async () => {
+    const ids = await seed("owner-ledger-delete", "ledger-delete");
+    await query(
+      "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
+      [randomUUID(), ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
+    );
+
+    const client = await pool.connect();
+    try {
+      await client.query(`SET search_path TO "${schema}", public`);
+      await client.query("BEGIN");
+      await client.query(
+        "DELETE FROM ledger_entries WHERE transaction_id = $1 AND direction = 'debit'",
+        [ids.transactionId],
+      );
+      await expect(client.query("COMMIT"))
+        .rejects.toThrow(/at least two distinct accounts/);
+      await client.query("ROLLBACK");
+    } finally {
+      client.release();
+    }
+  });
+
   it("rejects a transaction amount update that would unbalance existing postings", async () => {
     const ids = await seed("owner-amount-update", "amount-update");
     await query(
