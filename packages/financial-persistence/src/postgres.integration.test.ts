@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -15,10 +16,11 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
 
   beforeAll(async () => {
     await admin.query(`CREATE SCHEMA "${schema}"`);
-    const directory = join(process.cwd(), "migrations");
+    const directory = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
     const files = (await readdir(directory))
       .filter((file) => /^\\d+_.*\\.sql$/.test(file))
       .sort();
+    if (files.length === 0) throw new Error("No SQL migrations found in " + directory);
 
     const client = await pool.connect();
     try {
@@ -34,6 +36,13 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
           await client.query("ROLLBACK");
           throw new Error(`Migration ${file} failed: ${String(error)}`);
         }
+      }
+      const schemaCheck = await client.query(
+        "SELECT to_regclass($1) AS users_table",
+        [schema + ".users"],
+      );
+      if (!schemaCheck.rows[0]?.users_table) {
+        throw new Error("Migrations completed without creating " + schema + ".users");
       }
     } finally {
       client.release();
