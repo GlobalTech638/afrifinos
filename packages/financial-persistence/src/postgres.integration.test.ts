@@ -145,6 +145,36 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     expect(secondProvider.rows).toHaveLength(1);
   });
 
+  it("rolls back the transaction row when its ledger fails at commit", async () => {
+    const ids = await seed("owner-atomic-rollback", "atomic-rollback");
+    const transactionId = randomUUID();
+    const client = await pool.connect();
+    try {
+      await client.query(`SET search_path TO "${schema}", public`);
+      await client.query("BEGIN");
+      await client.query(
+        "INSERT INTO transactions (id, owner_id, type, occurred_at, amount_minor, currency, source_kind) VALUES ($1, $2, 'expense', now(), 100, 'KES', 'manual')",
+        [transactionId, "owner-atomic-rollback"],
+      );
+      await client.query(
+        "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now())",
+        [randomUUID(), transactionId, ids.debitAccountId],
+      );
+      await expect(client.query("COMMIT")).rejects.toMatchObject({ code: "23514" });
+      await client.query("ROLLBACK").catch(() => undefined);
+    } finally {
+      client.release();
+    }
+
+    const result = await query("SELECT id FROM transactions WHERE id = $1", [transactionId]);
+    expect(result.rows).toHaveLength(0);
+    const entries = await query(
+      "SELECT id FROM ledger_entries WHERE transaction_id = $1",
+      [transactionId],
+    );
+    expect(entries.rows).toHaveLength(0);
+  });
+
   it("allows a complete balanced posting to commit", async () => {
     const ids = await seed("owner-balanced", "balanced");
     const client = await pool.connect();
