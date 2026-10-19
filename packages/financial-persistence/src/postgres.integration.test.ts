@@ -79,6 +79,28 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     return { transactionId: `txn-${suffix}`, debitAccountId: `cash-${suffix}`, creditAccountId: `expense-${suffix}` };
   }
 
+  it("enforces provider transaction idempotency within an owner namespace", async () => {
+    await query("INSERT INTO users (id) VALUES ($1)", ["owner-provider-idempotency"]);
+    const insert = `INSERT INTO transactions
+      (id, owner_id, type, occurred_at, amount_minor, currency, source_kind, provider_id, external_id)
+      VALUES ($1, $2, 'expense', now(), 100, 'KES', 'provider_file', 'bank-a', 'statement-row-1')
+      ON CONFLICT (owner_id, provider_id, external_id)
+      WHERE provider_id IS NOT NULL AND external_id IS NOT NULL
+      DO NOTHING
+      RETURNING id`;
+
+    const first = await query(insert, ["provider-txn-first", "owner-provider-idempotency"]);
+    const retry = await query(insert, ["provider-txn-retry", "owner-provider-idempotency"]);
+    expect(first.rows).toHaveLength(1);
+    expect(retry.rows).toHaveLength(0);
+
+    const stored = await query(
+      "SELECT id FROM transactions WHERE owner_id = $1 AND provider_id = $2 AND external_id = $3",
+      ["owner-provider-idempotency", "bank-a", "statement-row-1"],
+    );
+    expect(stored.rows).toEqual([{ id: "provider-txn-first" }]);
+  });
+
   it("allows a complete balanced posting to commit", async () => {
     const ids = await seed("owner-balanced", "balanced");
     const client = await pool.connect();
