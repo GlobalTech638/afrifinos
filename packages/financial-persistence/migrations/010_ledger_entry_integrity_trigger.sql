@@ -6,9 +6,9 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  transaction_owner UUID;
+  transaction_owner TEXT;
   transaction_currency CHAR(3);
-  account_owner UUID;
+  account_owner TEXT;
   account_currency CHAR(3);
 BEGIN
   SELECT owner_id, currency
