@@ -230,10 +230,19 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
       options: `-c search_path=${schema},public`,
     });
 
+    let readyCount = 0;
+    let signalBothReady!: () => void;
+    let releaseAttempts!: () => void;
+    const bothReady = new Promise<void>((resolve) => { signalBothReady = resolve; });
+    const startAttempts = new Promise<void>((resolve) => { releaseAttempts = resolve; });
+
     async function postPair() {
       const client = await concurrentPool.connect();
       try {
         await client.query("BEGIN");
+        readyCount += 1;
+        if (readyCount === 2) signalBothReady();
+        await startAttempts;
         await client.query(
           "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
           [randomUUID(), ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
@@ -252,7 +261,10 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     }
 
     try {
-      const outcomes = await Promise.all([postPair(), postPair()]);
+      const attempts = Promise.all([postPair(), postPair()]);
+      await bothReady;
+      releaseAttempts();
+      const outcomes = await attempts;
       expect(outcomes.filter((outcome) => outcome.status === "committed")).toHaveLength(1);
       const rejected = outcomes.filter((outcome) => outcome.status === "rejected");
       expect(rejected).toHaveLength(1);
