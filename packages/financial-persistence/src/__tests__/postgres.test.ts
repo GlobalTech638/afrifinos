@@ -84,6 +84,9 @@ describe("PostgresFinancialRepository", () => {
     expect(client.queries).toHaveLength(1);
     expect(client.queries[0]?.text).toContain("INNER JOIN accounts a ON a.id = le.account_id");
     expect(client.queries[0]?.text).toContain("a.owner_id = $1");
+    expect(client.queries[0]?.text).toContain("le.account_id::text IN ($2, $3)");
+    expect(client.queries[0]?.text).toContain("le.posted_at >= $4");
+    expect(client.queries[0]?.text).toContain("le.posted_at < $5");
     expect(client.queries[0]?.values).toEqual([
       "owner-1", "cash", "expense", "2026-09-01T00:00:00Z", "2026-10-01T00:00:00Z",
     ]);
