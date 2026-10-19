@@ -75,7 +75,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     } finally {
       client.release();
     }
-    const result = await pool.query("SELECT COUNT(*)::int AS count FROM ledger_entries WHERE transaction_id = $1", [ids.transactionId]);
+    const result = await pool.query(`SELECT COUNT(*)::int AS count FROM "${schema}".ledger_entries WHERE transaction_id = $1`, [ids.transactionId]);
     expect(result.rows[0]?.count).toBe(2);
   });
 
