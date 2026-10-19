@@ -101,6 +101,40 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     expect(stored.rows).toEqual([{ id: "provider-txn-first" }]);
   });
 
+  it("scopes provider idempotency to owner and provider", async () => {
+    await query("INSERT INTO users (id) VALUES ($1), ($2)", [
+      "owner-provider-scope-a",
+      "owner-provider-scope-b",
+    ]);
+    const insert = `INSERT INTO transactions
+      (id, owner_id, type, occurred_at, amount_minor, currency, source_kind, provider_id, external_id)
+      VALUES ($1, $2, 'expense', now(), 100, 'KES', 'provider_file', $3, 'shared-external-id')
+      ON CONFLICT (owner_id, provider_id, external_id)
+      WHERE provider_id IS NOT NULL AND external_id IS NOT NULL
+      DO NOTHING
+      RETURNING id`;
+
+    const firstOwner = await query(insert, [
+      "provider-scope-a",
+      "owner-provider-scope-a",
+      "bank-a",
+    ]);
+    const secondOwner = await query(insert, [
+      "provider-scope-b",
+      "owner-provider-scope-b",
+      "bank-a",
+    ]);
+    const secondProvider = await query(insert, [
+      "provider-scope-c",
+      "owner-provider-scope-a",
+      "bank-b",
+    ]);
+
+    expect(firstOwner.rows).toHaveLength(1);
+    expect(secondOwner.rows).toHaveLength(1);
+    expect(secondProvider.rows).toHaveLength(1);
+  });
+
   it("allows a complete balanced posting to commit", async () => {
     const ids = await seed("owner-balanced", "balanced");
     const client = await pool.connect();
