@@ -96,6 +96,51 @@ CREATE CONSTRAINT TRIGGER ledger_entries_balanced_at_commit
   FOR EACH ROW
   EXECUTE FUNCTION enforce_balanced_ledger_at_commit();
 
+
+-- Serialize ledger mutations for a transaction before rows are changed. Without
+-- this parent-row lock, concurrent sessions can each validate a partial snapshot
+-- and both commit postings that are invalid when considered together.
+CREATE OR REPLACE FUNCTION lock_ledger_transaction_rows()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $
+DECLARE
+  transaction_ids TEXT[];
+  transaction_id_to_lock TEXT;
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    transaction_ids := ARRAY[NEW.transaction_id];
+  ELSIF TG_OP = 'DELETE' THEN
+    transaction_ids := ARRAY[OLD.transaction_id];
+  ELSE
+    transaction_ids := ARRAY[OLD.transaction_id, NEW.transaction_id];
+  END IF;
+
+  FOR transaction_id_to_lock IN
+    SELECT DISTINCT candidate_id
+      FROM unnest(transaction_ids) AS candidate_id
+      WHERE candidate_id IS NOT NULL
+      ORDER BY candidate_id
+  LOOP
+    PERFORM 1
+      FROM transactions
+      WHERE id = transaction_id_to_lock
+      FOR UPDATE;
+  END LOOP;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$;
+
+DROP TRIGGER IF EXISTS ledger_entries_lock_transaction ON ledger_entries;
+CREATE TRIGGER ledger_entries_lock_transaction
+  BEFORE INSERT OR UPDATE OR DELETE ON ledger_entries
+  FOR EACH ROW
+  EXECUTE FUNCTION lock_ledger_transaction_rows();
+
 -- Parent-row updates must not invalidate a ledger that was valid when posted.
 -- Only validate transaction updates when ledger rows already exist: pre-posting
 -- transactions may legitimately be stored before their ledger is constructed.
