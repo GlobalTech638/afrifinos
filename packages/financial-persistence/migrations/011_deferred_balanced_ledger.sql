@@ -55,6 +55,18 @@ BEGIN
     RAISE EXCEPTION 'Ledger entry currency must match transaction currency'
       USING ERRCODE = '23514';
   END IF;
+
+  IF EXISTS (
+    SELECT 1
+      FROM ledger_entries le
+      JOIN accounts a ON a.id = le.account_id
+      JOIN transactions t ON t.id = le.transaction_id
+      WHERE le.transaction_id = p_transaction_id
+        AND (a.owner_id <> t.owner_id OR a.currency <> t.currency OR le.currency <> a.currency)
+  ) THEN
+    RAISE EXCEPTION 'Ledger accounts must match transaction owner and currency'
+      USING ERRCODE = '23514';
+  END IF;
 END;
 $$;
 
@@ -101,7 +113,7 @@ $$;
 
 DROP TRIGGER IF EXISTS transactions_ledger_integrity_after_update ON transactions;
 CREATE CONSTRAINT TRIGGER transactions_ledger_integrity_after_update
-  AFTER UPDATE OF amount_minor, currency ON transactions
+  AFTER UPDATE OF owner_id, amount_minor, currency ON transactions
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW
   EXECUTE FUNCTION enforce_transaction_ledger_after_update();
