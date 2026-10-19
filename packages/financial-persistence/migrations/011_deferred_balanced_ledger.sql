@@ -83,3 +83,50 @@ CREATE CONSTRAINT TRIGGER ledger_entries_balanced_at_commit
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW
   EXECUTE FUNCTION enforce_balanced_ledger_at_commit();
+
+-- Parent-row updates must not invalidate a ledger that was valid when posted.
+-- Only validate transaction updates when ledger rows already exist: pre-posting
+-- transactions may legitimately be stored before their ledger is constructed.
+CREATE OR REPLACE FUNCTION enforce_transaction_ledger_after_update()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM ledger_entries WHERE transaction_id = NEW.id) THEN
+    PERFORM assert_transaction_ledger_balanced(NEW.id);
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS transactions_ledger_integrity_after_update ON transactions;
+CREATE CONSTRAINT TRIGGER transactions_ledger_integrity_after_update
+  AFTER UPDATE OF amount_minor, currency ON transactions
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW
+  EXECUTE FUNCTION enforce_transaction_ledger_after_update();
+
+CREATE OR REPLACE FUNCTION enforce_account_ledger_integrity_after_update()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM ledger_entries le
+      JOIN transactions t ON t.id = le.transaction_id
+      WHERE le.account_id = NEW.id
+        AND (t.owner_id <> NEW.owner_id OR t.currency <> NEW.currency OR le.currency <> NEW.currency)
+  ) THEN
+    RAISE EXCEPTION 'Account owner and currency must remain compatible with existing ledger entries'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS accounts_ledger_integrity_after_update ON accounts;
+CREATE TRIGGER accounts_ledger_integrity_after_update
+  BEFORE UPDATE OF owner_id, currency ON accounts
+  FOR EACH ROW
+  EXECUTE FUNCTION enforce_account_ledger_integrity_after_update();
