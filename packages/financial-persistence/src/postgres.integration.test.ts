@@ -158,6 +158,33 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     }
   });
 
+  it("rejects account currency changes that invalidate existing ledger entries", async () => {
+    const ids = await seed("owner-account-currency-update", "account-currency-update");
+    await query(
+      "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
+      [randomUUID(), ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
+    );
+
+    await expect(query(
+      "UPDATE accounts SET currency = 'USD' WHERE id = $1",
+      [ids.debitAccountId],
+    )).rejects.toThrow(/Account owner and currency must remain compatible/);
+  });
+
+  it("rejects account owner changes that invalidate existing ledger entries", async () => {
+    const ids = await seed("owner-account-owner-update", "account-owner-update");
+    await query("INSERT INTO users (id) VALUES ($1)", ["replacement-owner"]);
+    await query(
+      "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
+      [randomUUID(), ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
+    );
+
+    await expect(query(
+      "UPDATE accounts SET owner_id = 'replacement-owner' WHERE id = $1",
+      [ids.debitAccountId],
+    )).rejects.toThrow(/Account owner and currency must remain compatible/);
+  });
+
   it("rejects a transaction amount update that would unbalance existing postings", async () => {
     const ids = await seed("owner-amount-update", "amount-update");
     await query(
