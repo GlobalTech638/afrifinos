@@ -199,6 +199,38 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     )).rejects.toThrow(/Ledger accounts must match transaction owner and currency/);
   });
 
+  it("allows replacing a ledger entry atomically when the final posting remains balanced", async () => {
+    const ids = await seed("owner-ledger-replace", "ledger-replace");
+    const originalDebitId = randomUUID();
+    await query(
+      "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
+      [originalDebitId, ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
+    );
+
+    const client = await pool.connect();
+    try {
+      await client.query(`SET search_path TO "${schema}", public`);
+      await client.query("BEGIN");
+      await client.query("DELETE FROM ledger_entries WHERE id = $1", [originalDebitId]);
+      await client.query(
+        "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now())",
+        [randomUUID(), ids.transactionId, ids.debitAccountId],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const result = await query(
+      "SELECT COUNT(*)::int AS count, SUM(CASE WHEN direction = 'debit' THEN amount_minor ELSE 0 END)::int AS debits, SUM(CASE WHEN direction = 'credit' THEN amount_minor ELSE 0 END)::int AS credits FROM ledger_entries WHERE transaction_id = $1",
+      [ids.transactionId],
+    );
+    expect(result.rows[0]).toMatchObject({ count: 2, debits: 100, credits: 100 });
+  });
+
   it("rejects deleting one entry from an otherwise balanced posting", async () => {
     const ids = await seed("owner-ledger-delete", "ledger-delete");
     await query(
