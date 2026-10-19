@@ -185,6 +185,20 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     )).rejects.toThrow(/Account owner and currency must remain compatible/);
   });
 
+  it("rejects transaction owner changes that invalidate existing ledger entries", async () => {
+    const ids = await seed("owner-transaction-owner-update", "transaction-owner-update");
+    await query("INSERT INTO users (id) VALUES ($1)", ["replacement-transaction-owner"]);
+    await query(
+      "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
+      [randomUUID(), ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
+    );
+
+    await expect(query(
+      "UPDATE transactions SET owner_id = 'replacement-transaction-owner' WHERE id = $1",
+      [ids.transactionId],
+    )).rejects.toThrow(/Ledger accounts must match transaction owner and currency/);
+  });
+
   it("rejects a transaction amount update that would unbalance existing postings", async () => {
     const ids = await seed("owner-amount-update", "amount-update");
     await query(
