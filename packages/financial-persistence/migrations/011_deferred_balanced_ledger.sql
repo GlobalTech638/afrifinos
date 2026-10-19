@@ -103,7 +103,7 @@ CREATE CONSTRAINT TRIGGER ledger_entries_balanced_at_commit
 CREATE OR REPLACE FUNCTION lock_ledger_transaction_rows()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $
+AS $$
 DECLARE
   transaction_ids TEXT[];
   transaction_id_to_lock TEXT;
@@ -133,7 +133,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$;
+$$;
 
 DROP TRIGGER IF EXISTS ledger_entries_lock_transaction ON ledger_entries;
 CREATE TRIGGER ledger_entries_lock_transaction
