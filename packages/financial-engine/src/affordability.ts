@@ -1,4 +1,4 @@
-import type { CurrencyCode } from "@afrifinos/financial-domain";
+import { currencyCode, getCurrencyDefinition, type CurrencyCode } from "@afrifinos/financial-domain";
 import type { CashForecast } from "./forecasting.js";
 
 export type AffordabilityDecision = "affordable" | "caution" | "not_affordable";
@@ -34,6 +34,11 @@ function parseMinorUnits(value: bigint | number | string, field: string): bigint
 }
 
 export function assessAffordability(input: AffordabilityInput): AffordabilityAnalysis {
+  try {
+    getCurrencyDefinition(currencyCode(input.currency));
+  } catch {
+    throw new Error(`Unsupported affordability currency: ${input.currency}`);
+  }
   const purchaseAmountMinor = parseMinorUnits(input.purchaseAmountMinor, "Purchase amount");
   const additionalRecurringMonthlyMinor = parseMinorUnits(input.additionalRecurringMonthlyMinor ?? 0, "Additional recurring monthly cost");
   if (purchaseAmountMinor <= 0n) throw new Error("Purchase amount must be positive");
