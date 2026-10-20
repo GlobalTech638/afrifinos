@@ -107,11 +107,11 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
 
   it("deduplicates concurrent provider retries at the database boundary", async () => {
     const ownerId = "owner-provider-concurrent-retry";
-    const providerId = "00000000-0000-4000-8000-00000000000a";
+    const providerId = "00000000-0000-4000-8000-00000000000e";
     await query("INSERT INTO users (id) VALUES ($1)", [ownerId]);
     await query("INSERT INTO providers (id, name) VALUES ($1, $2)", [
       providerId,
-      "Bank A",
+      "Concurrent Retry Bank",
     ]);
 
     const concurrentPool = new Pool({
