@@ -37,8 +37,8 @@ describe("forecastCashFlow", () => {
       startingBalanceMinor: 0n,
       averageMonthlyIncomeMinor: 0n,
       averageMonthlyExpenseMinor: 0n,
-      horizonDays: 45 as 30,
-    })).toThrow("Unsupported forecast horizon: 45");
+      horizonDays: 0 as 30,
+    })).toThrow("Forecast horizon must be a positive safe integer: 0");
   });
 
   it("adds recurring transactions as discrete events on top of the baseline", () => {
