@@ -22,9 +22,20 @@ export interface AffordabilityAnalysis {
   readonly reasons: readonly string[];
 }
 
+function parseMinorUnits(value: bigint | number | string, field: string): bigint {
+  if (typeof value === "number" && !Number.isSafeInteger(value)) {
+    throw new Error(`${field} must be a safe integer when provided as a number`);
+  }
+  try {
+    return BigInt(value);
+  } catch {
+    throw new Error(`${field} must be an integer amount in minor currency units`);
+  }
+}
+
 export function assessAffordability(input: AffordabilityInput): AffordabilityAnalysis {
-  const purchaseAmountMinor = BigInt(input.purchaseAmountMinor);
-  const additionalRecurringMonthlyMinor = BigInt(input.additionalRecurringMonthlyMinor ?? 0);
+  const purchaseAmountMinor = parseMinorUnits(input.purchaseAmountMinor, "Purchase amount");
+  const additionalRecurringMonthlyMinor = parseMinorUnits(input.additionalRecurringMonthlyMinor ?? 0, "Additional recurring monthly cost");
   if (purchaseAmountMinor <= 0n) throw new Error("Purchase amount must be positive");
   if (additionalRecurringMonthlyMinor < 0n) throw new Error("Additional recurring monthly cost cannot be negative");
   if (input.forecast.currency !== input.currency) throw new Error("Affordability currency mismatch");
