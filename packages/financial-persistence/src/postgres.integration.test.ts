@@ -269,6 +269,11 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
       max: 4,
       options: `-c search_path=${schema},public`,
     });
+    let startedTransactions = 0;
+    let releaseConcurrentTransactions!: () => void;
+    const concurrentTransactionsReady = new Promise<void>((resolve) => {
+      releaseConcurrentTransactions = resolve;
+    });
     const repositoryClient = {
       async query(text: string, values: readonly unknown[] = []) {
         const result = await repositoryPool.query(text, [...values]);
@@ -278,6 +283,9 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
         const client = await repositoryPool.connect();
         try {
           await client.query("BEGIN");
+          startedTransactions += 1;
+          if (startedTransactions === 2) releaseConcurrentTransactions();
+          await concurrentTransactionsReady;
           const tx = {
             async query(text: string, values: readonly unknown[] = []) {
               const result = await client.query(text, [...values]);
