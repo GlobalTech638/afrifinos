@@ -61,10 +61,10 @@ function nextOccurrenceDay(item: RecurringTransaction, start: Date): number | nu
   return Math.max(1, occurrencesPassed * interval + interval - elapsedDays);
 }
 
-function recurringEvents(recurring: readonly RecurringTransaction[], horizonDays: number, type: "income" | "expense", start: Date): Map<number, bigint> {
+function recurringEvents(recurring: readonly RecurringTransaction[], horizonDays: number, type: "income" | "expense", start: Date, currency: CurrencyCode): Map<number, bigint> {
   const events = new Map<number, bigint>();
   for (const item of recurring) {
-    if (item.type !== type) continue;
+    if (item.type !== type || item.currency !== currency) continue;
     const firstDay = nextOccurrenceDay(item, start);
     if (firstDay === null) continue;
     const interval = Math.max(1, Math.round(item.averageIntervalDays || cadenceIntervalDays(item.cadence)));
@@ -143,8 +143,8 @@ export function forecastCashFlow(input: {
   const start = new Date(input.asOf ?? new Date().toISOString());
   if (Number.isNaN(start.getTime())) throw new Error(`Invalid forecast date: ${input.asOf}`);
 
-  const recurringIncome = recurringEvents(input.recurring ?? [], horizonDays, "income", start);
-  const recurringExpense = recurringEvents(input.recurring ?? [], horizonDays, "expense", start);
+  const recurringIncome = recurringEvents(input.recurring ?? [], horizonDays, "income", start, input.currency);
+  const recurringExpense = recurringEvents(input.recurring ?? [], horizonDays, "expense", start, input.currency);
   const obligations = obligationEvents(input.obligations ?? [], horizonDays, start, input.currency);
   const points: ForecastPoint[] = [];
   let balance = startingBalanceMinor;
