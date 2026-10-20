@@ -1,6 +1,4 @@
-import type {
-  Account, Asset, Liability, LedgerEntry, Obligation, SavingsGoal, Transaction,
-} from "@afrifinos/financial-domain";
+import { currencyCode, getCurrencyDefinition, type Account, type Asset, type Liability, type LedgerEntry, type Obligation, type SavingsGoal, type Transaction } from "@afrifinos/financial-domain";
 import type { FinancialRepository, TransactionWriteRepository, TransactionWriteResult, FinancialSignalInput, StoredFinancialSignal, PersistedSignalStatus } from "./index.js";
 
 export interface SqlQueryResult<Row extends Record<string, unknown> = Record<string, unknown>> { readonly rows: readonly Row[]; }
@@ -12,7 +10,15 @@ interface AccountRow extends Record<string, unknown> { id: string; owner_id: str
 interface TransactionRow extends Record<string, unknown> { id: string; owner_id: string; type: Transaction["type"]; status: Transaction["status"]; occurred_at: string; description: string | null; counterparty: string | null; category_id: string | null; amount_minor: string | number; currency: string; source_kind: Transaction["provenance"]["sourceKind"]; provider_id: string | null; external_id: string | null; imported_at: string; source_hash: string | null; }
 interface LedgerRow extends Record<string, unknown> { id: string; transaction_id: string; account_id: string; currency: string; amount_minor: string | number; direction: LedgerEntry["direction"]; posted_at: string; }
 
-function requiredCurrency(value: string): Transaction["total"]["currency"] { if (!/^[A-Z]{3}$/.test(value)) throw new Error(`Invalid currency returned by database: ${value}`); return value as Transaction["total"]["currency"]; }
+function requiredCurrency(value: string): Transaction["total"]["currency"] {
+  try {
+    const code = currencyCode(value);
+    getCurrencyDefinition(code);
+    return code;
+  } catch {
+    throw new Error(`Unsupported currency returned by database: ${value}`);
+  }
+}
 function accountFromRow(row: AccountRow): Account { return { accountId: row.id, ownerId: row.owner_id, name: row.name, type: row.type, currency: requiredCurrency(row.currency), status: row.status, ...(row.provider_id ? { providerId: row.provider_id } : {}), ...(row.external_account_id ? { externalAccountId: row.external_account_id } : {}), ...(row.opened_at ? { openedAt: row.opened_at } : {}), ...(row.archived_at ? { archivedAt: row.archived_at } : {}) }; }
 function transactionFromRow(row: TransactionRow): Transaction { return { transactionId: row.id, ownerId: row.owner_id, type: row.type, status: row.status, occurredAt: row.occurred_at, ...(row.description ? { description: row.description } : {}), ...(row.counterparty ? { counterparty: row.counterparty } : {}), ...(row.category_id ? { categoryId: row.category_id } : {}), total: { amountMinor: BigInt(row.amount_minor), currency: requiredCurrency(row.currency) }, provenance: { sourceKind: row.source_kind, ...(row.provider_id ? { providerId: row.provider_id } : {}), ...(row.external_id ? { externalId: row.external_id } : {}), importedAt: row.imported_at, ...(row.source_hash ? { sourceHash: row.source_hash } : {}) } }; }
 function ledgerFromRow(row: LedgerRow): LedgerEntry { return { entryId: row.id, transactionId: row.transaction_id, accountId: row.account_id, currency: requiredCurrency(row.currency), amountMinor: BigInt(row.amount_minor), direction: row.direction, postedAt: row.posted_at }; }
