@@ -70,6 +70,14 @@ describe("assessAffordability", () => {
     expect(result.decision).toBe("caution");
   });
 
+  it("rejects unsupported currencies before calculating affordability", () => {
+    expect(() => assessAffordability({
+      currency: "ZZZ",
+      purchaseAmountMinor: 100n,
+      forecast: { ...forecast(100_000n, 200_000n, 50_000n), currency: "ZZZ" },
+    })).toThrow("Unsupported affordability currency: ZZZ");
+  });
+
   it("rejects unsafe numeric minor-unit amounts instead of accepting rounded values", () => {
     expect(() => assessAffordability({
       currency: "KES",
