@@ -74,15 +74,6 @@ export async function ingestTransaction(
     throw error;
   }
 
-  if (command.providerId && command.input.externalId) {
-    const existing = await repository.getTransactionByProviderExternalId(
-      command.ownerId,
-      command.providerId,
-      command.input.externalId,
-    );
-    if (existing) return duplicateResult(existing);
-  }
-
   const enriched = processTransaction(command.input, {
     sourceKind: command.sourceKind,
     ...(command.providerId ? { providerId: command.providerId } : {}),
