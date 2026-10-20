@@ -58,6 +58,33 @@ describe("forecastCashFlow", () => {
     expect(forecast.points[29]?.projectedIncomeMinor).toBe(0n);
   });
 
+  it("ignores recurring transactions in a different currency", () => {
+    const foreignRecurring: RecurringTransaction = {
+      key: "expense:foreign:USD",
+      description: "Foreign subscription",
+      type: "expense",
+      currency: "USD",
+      amountMinor: 50000n,
+      averageAmountMinor: 50000n,
+      occurrenceCount: 3,
+      averageIntervalDays: 30,
+      cadence: "monthly",
+      confidence: 0.95,
+      lastObservedAt: "2026-08-25T00:00:00Z",
+    };
+    const forecast = forecastCashFlow({
+      currency: "KES",
+      startingBalanceMinor: 100000n,
+      averageMonthlyIncomeMinor: 0n,
+      averageMonthlyExpenseMinor: 0n,
+      recurring: [foreignRecurring],
+      asOf: "2026-09-01T00:00:00Z",
+      horizonDays: 30,
+    });
+    expect(forecast.projectedExpenseMinor).toBe(0n);
+    expect(forecast.endingBalanceMinor).toBe(100000n);
+  });
+
   it("includes active one-off obligations on their due date", () => {
     const forecast = forecastCashFlow({ currency: "KES", startingBalanceMinor: 50000n, averageMonthlyIncomeMinor: 0n, averageMonthlyExpenseMinor: 0n, obligations: [{ obligationId: "school-fees", ownerId: "user-1", name: "School fees", amount: { amountMinor: 40000n, currency: "KES" }, dueAt: "2026-09-11T00:00:00Z", status: "active", recurring: false, recurrence: "once" }], asOf: "2026-09-01T00:00:00Z", horizonDays: 30 });
     expect(forecast.points[9]?.projectedExpenseMinor).toBe(40000n);
