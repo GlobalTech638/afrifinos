@@ -256,6 +256,118 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     }
   });
 
+  it("deduplicates concurrent identical provider retries through the repository", async () => {
+    const ids = await seed("owner-provider-identical-race", "provider-identical-race");
+    const providerId = "00000000-0000-4000-8000-000000000010";
+    await query("INSERT INTO providers (id, name) VALUES ($1, $2)", [
+      providerId,
+      "Identical Retry Bank",
+    ]);
+
+    const repositoryPool = new Pool({
+      connectionString: databaseUrl,
+      max: 4,
+      options: `-c search_path=${schema},public`,
+    });
+    const repositoryClient = {
+      async query(text: string, values: readonly unknown[] = []) {
+        const result = await repositoryPool.query(text, [...values]);
+        return { rows: result.rows as Record<string, unknown>[] };
+      },
+      async transaction<T>(work: (tx: import("./postgres.js").SqlClient) => Promise<T>): Promise<T> {
+        const client = await repositoryPool.connect();
+        try {
+          await client.query("BEGIN");
+          const tx = {
+            async query(text: string, values: readonly unknown[] = []) {
+              const result = await client.query(text, [...values]);
+              return { rows: result.rows as Record<string, unknown>[] };
+            },
+            async transaction<U>(nested: (tx: import("./postgres.js").SqlClient) => Promise<U>): Promise<U> {
+              return nested(tx as unknown as import("./postgres.js").SqlClient);
+            },
+          };
+          const result = await work(tx as unknown as import("./postgres.js").SqlClient);
+          await client.query("COMMIT");
+          return result;
+        } catch (error) {
+          await client.query("ROLLBACK").catch(() => undefined);
+          throw error;
+        } finally {
+          client.release();
+        }
+      },
+    };
+
+    try {
+      const { PostgresFinancialRepository } = await import("./postgres.js");
+      const repository = new PostgresFinancialRepository(repositoryClient);
+      const base = {
+        ownerId: "owner-provider-identical-race",
+        type: "expense" as const,
+        status: "posted" as const,
+        occurredAt: "2026-10-01T10:00:00.000Z",
+        total: { amountMinor: 100n, currency: "KES" as const },
+        provenance: {
+          sourceKind: "provider_file" as const,
+          providerId,
+          externalId: "same-provider-row-identical",
+          importedAt: "2026-10-01T10:01:00.000Z",
+        },
+      };
+      const makeAttempt = (transactionId: string) => {
+        const transaction = { ...base, transactionId, description: "Same provider description" };
+        const entries = [
+          {
+            entryId: randomUUID(),
+            transactionId,
+            accountId: ids.debitAccountId,
+            currency: "KES" as const,
+            amountMinor: 100n,
+            direction: "debit" as const,
+            postedAt: transaction.occurredAt,
+          },
+          {
+            entryId: randomUUID(),
+            transactionId,
+            accountId: ids.creditAccountId,
+            currency: "KES" as const,
+            amountMinor: 100n,
+            direction: "credit" as const,
+            postedAt: transaction.occurredAt,
+          },
+        ] as const;
+        return repository.saveTransactionWithLedger(transaction, entries);
+      };
+
+      const outcomes = await Promise.allSettled([
+        makeAttempt(randomUUID()),
+        makeAttempt(randomUUID()),
+      ]);
+      expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(2);
+      const results = outcomes.map((outcome) => {
+        if (outcome.status !== "fulfilled") throw outcome.reason;
+        return outcome.value;
+      });
+      expect(results.sort()).toEqual(["duplicate", "inserted"]);
+
+      const stored = await query(
+        "SELECT id, description FROM transactions WHERE owner_id = $1 AND provider_id = $2 AND external_id = $3",
+        ["owner-provider-identical-race", providerId, "same-provider-row-identical"],
+      );
+      expect(stored.rows).toHaveLength(1);
+      expect(stored.rows[0]?.description).toBe("Same provider description");
+
+      const posted = await query(
+        "SELECT COUNT(*)::int AS count FROM ledger_entries WHERE transaction_id IN (SELECT id FROM transactions WHERE owner_id = $1 AND provider_id = $2 AND external_id = $3)",
+        ["owner-provider-identical-race", providerId, "same-provider-row-identical"],
+      );
+      expect(posted.rows[0]?.count).toBe(2);
+    } finally {
+      await repositoryPool.end();
+    }
+  });
+
   it("scopes provider idempotency to owner and provider", async () => {
     await query("INSERT INTO users (id) VALUES ($1), ($2)", [
       "owner-provider-scope-a",
