@@ -30,8 +30,30 @@ class InMemoryWriteRepository implements TransactionWriteRepository {
     transaction: Transaction,
     entries: readonly LedgerEntry[],
   ): Promise<TransactionWriteResult> {
+    const providerId = transaction.provenance.providerId;
+    const externalId = transaction.provenance.externalId;
+    const key = providerId && externalId ? `${providerId}:${externalId}` : undefined;
+    const existing = key ? this.providerTransactions.get(key) : undefined;
+    if (existing) {
+      const samePayload =
+        existing.type === transaction.type &&
+        existing.status === transaction.status &&
+        Date.parse(existing.occurredAt) === Date.parse(transaction.occurredAt) &&
+        existing.description === transaction.description &&
+        existing.counterparty === transaction.counterparty &&
+        existing.categoryId === transaction.categoryId &&
+        existing.total.amountMinor === transaction.total.amountMinor &&
+        existing.total.currency === transaction.total.currency &&
+        existing.provenance.sourceKind === transaction.provenance.sourceKind;
+      if (!samePayload) {
+        throw new Error("Provider transaction identifier conflicts with a different payload");
+      }
+      return "duplicate";
+    }
+
     this.transactions.push(transaction);
     this.entries.push(...entries);
+    if (key) this.providerTransactions.set(key, transaction);
     return "inserted";
   }
 }
@@ -71,7 +93,7 @@ describe("ingestTransaction", () => {
     const repository = new InMemoryWriteRepository();
     repository.providerTransactions.set("mpesa:external-duplicate", {
       transactionId: "tx-duplicate", ownerId: "user-1", type: "expense", status: "posted",
-      occurredAt: "2026-09-14T08:00:00Z", description: "Naivas groceries",
+      occurredAt: "2026-09-14T08:00:00Z", description: "Naivas groceries", categoryId: "food",
       total: { amountMinor: 2500n, currency: "KES" },
       provenance: { sourceKind: "provider_api", providerId: "mpesa", externalId: "external-duplicate", importedAt: "2026-09-14T08:00:00Z" },
     });
@@ -94,6 +116,35 @@ describe("ingestTransaction", () => {
 
     expect(result.persistence).toBe("duplicate");
     expect(result.ledgerEntryCount).toBe(0);
+    expect(repository.transactions).toHaveLength(0);
+    expect(repository.entries).toHaveLength(0);
+  });
+
+  it("rejects a provider identifier reused with a changed payload", async () => {
+    const repository = new InMemoryWriteRepository();
+    repository.providerTransactions.set("mpesa:external-conflict", {
+      transactionId: "tx-original", ownerId: "user-1", type: "expense", status: "posted",
+      occurredAt: "2026-09-14T08:00:00Z", description: "Naivas groceries", categoryId: "food",
+      total: { amountMinor: 2500n, currency: "KES" },
+      provenance: { sourceKind: "provider_api", providerId: "mpesa", externalId: "external-conflict", importedAt: "2026-09-14T08:00:00Z" },
+    });
+
+    await expect(ingestTransaction(repository, {
+      ownerId: "user-1",
+      primaryAccountId: "mpesa",
+      counterAccountId: "expense",
+      transactionId: "tx-changed",
+      sourceKind: "provider_api",
+      providerId: "mpesa",
+      input: {
+        externalId: "external-conflict",
+        occurredAt: "2026-09-14T08:00:00Z",
+        description: "Naivas groceries",
+        amountMinor: 3500n,
+        currency: "KES",
+      },
+    })).rejects.toThrow("Provider transaction identifier conflicts with a different payload");
+
     expect(repository.transactions).toHaveLength(0);
     expect(repository.entries).toHaveLength(0);
   });
