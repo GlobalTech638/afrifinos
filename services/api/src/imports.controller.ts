@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Inject, Post } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Inject, InternalServerErrorException, Post } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { parseTransactionCsv } from "@afrifinos/financial-ingestion";
 import { ingestTransactionBatch } from "@afrifinos/financial-application";
@@ -29,14 +29,19 @@ export class ImportsController {
       throw new BadRequestException("providerId cannot be empty");
     }
 
-    const parsed = parseTransactionCsv(body.csv);
+    let parsed: ReturnType<typeof parseTransactionCsv>;
+    try {
+      parsed = parseTransactionCsv(body.csv);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : "Invalid CSV input");
+    }
     const result = ingestTransactionBatch(this.repository, {
       ownerId,
-      primaryAccountId: body.primaryAccountId,
-      counterAccountId: body.counterAccountId,
+      primaryAccountId: body.primaryAccountId.trim(),
+      counterAccountId: body.counterAccountId.trim(),
       inputs: parsed.rows,
       sourceKind: "csv",
-      providerId: body.providerId,
+      ...(body.providerId?.trim() ? { providerId: body.providerId.trim() } : {}),
       transactionIdFor: () => randomUUID(),
     });
 
@@ -58,8 +63,8 @@ export class ImportsController {
         persistenceErrors,
         transactionIds: batch.persisted.map((item) => item.transaction.transactionId),
       };
-    } catch (error) {
-      throw new BadRequestException(error instanceof Error ? error.message : "CSV import failed");
+    } catch {
+      throw new InternalServerErrorException("Unable to import CSV transactions");
     }
   }
 }

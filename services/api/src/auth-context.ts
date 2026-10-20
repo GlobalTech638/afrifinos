@@ -25,6 +25,15 @@ function requiredEnvironment(name: string): string {
   return value;
 }
 
+export function hasTrustedCookieOrigin(expectedOrigin: string | undefined, requestOrigin: string | undefined): boolean {
+  if (!expectedOrigin?.trim() || !requestOrigin?.trim()) return false;
+  try {
+    return new URL(requestOrigin).origin === new URL(expectedOrigin).origin;
+  } catch {
+    return false;
+  }
+}
+
 function accessTokenFromRequest(request: Request): string | null {
   const authorization = request.headers.authorization;
   if (authorization?.startsWith("Bearer ")) {
@@ -73,6 +82,15 @@ export class JwtAuthGuard implements CanActivate {
     const token = accessTokenFromRequest(request);
 
     if (!token) throw new UnauthorizedException("Authentication is required");
+
+    const authorization = request.headers.authorization;
+    const hasBearerToken = Boolean(authorization?.startsWith("Bearer ") && authorization.slice("Bearer ".length).trim());
+    const mutatingMethod = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase());
+    if (!hasBearerToken && mutatingMethod) {
+      if (!hasTrustedCookieOrigin(process.env.WEB_ORIGIN, request.headers.origin)) {
+        throw new UnauthorizedException("Cookie-authenticated state-changing requests require a trusted Origin");
+      }
+    }
 
     try {
       const { payload } = await jwtVerify(token, this.jwks, {

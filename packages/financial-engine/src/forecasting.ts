@@ -1,4 +1,4 @@
-import type { CurrencyCode, Obligation, ObligationRecurrence } from "@afrifinos/financial-domain";
+import { currencyCode, getCurrencyDefinition, type CurrencyCode, type Obligation, type ObligationRecurrence } from "@afrifinos/financial-domain";
 import type { RecurringCadence, RecurringTransaction } from "./temporal-intelligence.js";
 
 export type ForecastHorizonDays = 30 | 60 | 90;
@@ -61,10 +61,10 @@ function nextOccurrenceDay(item: RecurringTransaction, start: Date): number | nu
   return Math.max(1, occurrencesPassed * interval + interval - elapsedDays);
 }
 
-function recurringEvents(recurring: readonly RecurringTransaction[], horizonDays: number, type: "income" | "expense", start: Date): Map<number, bigint> {
+function recurringEvents(recurring: readonly RecurringTransaction[], horizonDays: number, type: "income" | "expense", start: Date, currency: CurrencyCode): Map<number, bigint> {
   const events = new Map<number, bigint>();
   for (const item of recurring) {
-    if (item.type !== type) continue;
+    if (item.type !== type || item.currency !== currency) continue;
     const firstDay = nextOccurrenceDay(item, start);
     if (firstDay === null) continue;
     const interval = Math.max(1, Math.round(item.averageIntervalDays || cadenceIntervalDays(item.cadence)));
@@ -99,19 +99,19 @@ function obligationEvents(obligations: readonly Obligation[], horizonDays: numbe
   return events;
 }
 
-function distributeMonthlyAmount(amountMinor: bigint, days: number): bigint[] {
-  if (days <= 0) return [];
-  const result = Array<bigint>(days).fill(amountMinor / BigInt(days));
-  let remainder = amountMinor - result.reduce((sum, value) => sum + value, 0n);
-  for (let index = 0; remainder > 0n; index = (index + 1) % days) {
-    result[index] = (result[index] ?? 0n) + 1n;
-    remainder -= 1n;
-  }
-  return result;
-}
-
 function absolute(value: bigint): bigint {
   return value < 0n ? -value : value;
+}
+
+function parseMinorUnits(value: bigint | number | string, field: string): bigint {
+  if (typeof value === "number" && !Number.isSafeInteger(value)) {
+    throw new Error(`${field} must be a safe integer when provided as a number`);
+  }
+  try {
+    return BigInt(value);
+  } catch {
+    throw new Error(`${field} must be an integer amount in minor currency units`);
+  }
 }
 
 export function forecastCashFlow(input: {
@@ -126,19 +126,25 @@ export function forecastCashFlow(input: {
   readonly horizonDays?: ForecastHorizonDays;
 }): CashForecast {
   const horizonDays = input.horizonDays ?? 90;
-  const startingBalanceMinor = BigInt(input.startingBalanceMinor);
-  const averageMonthlyIncomeMinor = BigInt(input.averageMonthlyIncomeMinor);
-  const averageMonthlyExpenseMinor = BigInt(input.averageMonthlyExpenseMinor);
-  const safetyBufferMinor = BigInt(input.safetyBufferMinor ?? 0);
+  try {
+    getCurrencyDefinition(currencyCode(input.currency));
+  } catch {
+    throw new Error(`Unsupported forecast currency: ${input.currency}`);
+  }
+  if (!Number.isSafeInteger(horizonDays) || horizonDays <= 0) {
+    throw new Error(`Forecast horizon must be a positive safe integer: ${horizonDays}`);
+  }
+  const startingBalanceMinor = parseMinorUnits(input.startingBalanceMinor, "Starting balance");
+  const averageMonthlyIncomeMinor = parseMinorUnits(input.averageMonthlyIncomeMinor, "Average monthly income");
+  const averageMonthlyExpenseMinor = parseMinorUnits(input.averageMonthlyExpenseMinor, "Average monthly expense");
+  const safetyBufferMinor = parseMinorUnits(input.safetyBufferMinor ?? 0, "Safety buffer");
   if (averageMonthlyIncomeMinor < 0n || averageMonthlyExpenseMinor < 0n || safetyBufferMinor < 0n) throw new Error("Forecast amounts cannot be negative");
 
   const start = new Date(input.asOf ?? new Date().toISOString());
   if (Number.isNaN(start.getTime())) throw new Error(`Invalid forecast date: ${input.asOf}`);
 
-  const baselineIncome = distributeMonthlyAmount(averageMonthlyIncomeMinor, 30);
-  const baselineExpense = distributeMonthlyAmount(averageMonthlyExpenseMinor, 30);
-  const recurringIncome = recurringEvents(input.recurring ?? [], horizonDays, "income", start);
-  const recurringExpense = recurringEvents(input.recurring ?? [], horizonDays, "expense", start);
+  const recurringIncome = recurringEvents(input.recurring ?? [], horizonDays, "income", start, input.currency);
+  const recurringExpense = recurringEvents(input.recurring ?? [], horizonDays, "expense", start, input.currency);
   const obligations = obligationEvents(input.obligations ?? [], horizonDays, start, input.currency);
   const points: ForecastPoint[] = [];
   let balance = startingBalanceMinor;
@@ -149,9 +155,9 @@ export function forecastCashFlow(input: {
   let firstShortfallDate: string | undefined;
 
   for (let day = 1; day <= horizonDays; day += 1) {
-    const baselineDay = (day - 1) % 30;
-    const income = (baselineIncome[baselineDay] ?? 0n) + (recurringIncome.get(day) ?? 0n);
-    const expense = (baselineExpense[baselineDay] ?? 0n) + (recurringExpense.get(day) ?? 0n) + (obligations.get(day) ?? 0n);
+    const monthlyBoundary = day % 30 === 1;
+    const income = (monthlyBoundary ? averageMonthlyIncomeMinor : 0n) + (recurringIncome.get(day) ?? 0n);
+    const expense = (monthlyBoundary ? averageMonthlyExpenseMinor : 0n) + (recurringExpense.get(day) ?? 0n) + (obligations.get(day) ?? 0n)
     balance += income - expense;
     projectedIncomeMinor += income;
     projectedExpenseMinor += expense;
