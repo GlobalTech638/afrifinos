@@ -70,6 +70,21 @@ describe("assessAffordability", () => {
     expect(result.decision).toBe("caution");
   });
 
+  it("rejects unsafe numeric minor-unit amounts instead of accepting rounded values", () => {
+    expect(() => assessAffordability({
+      currency: "KES",
+      purchaseAmountMinor: Number.MAX_SAFE_INTEGER + 1,
+      forecast: forecast(100_000n, 200_000n, 50_000n),
+    })).toThrow("Purchase amount must be a safe integer when provided as a number");
+
+    expect(() => assessAffordability({
+      currency: "KES",
+      purchaseAmountMinor: 10_000n,
+      additionalRecurringMonthlyMinor: 1.5,
+      forecast: forecast(100_000n, 200_000n, 50_000n),
+    })).toThrow("Additional recurring monthly cost must be a safe integer when provided as a number");
+  });
+
   it("preserves large monetary values as bigint", () => {
     const amount = 10n ** 30n;
     const result = assessAffordability({
