@@ -178,10 +178,10 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
   it("rolls back application transaction writes when a ledger entry ID conflicts", async () => {
     const ids = await seed("owner-app-atomic", "app-atomic");
     const existingTransactionId = ids.transactionId;
-    const conflictingEntryId = "app-atomic-existing-debit";
+    const conflictingEntryId = "00000000-0000-4000-8000-0000000000e1";
     await query(
       "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
-      [conflictingEntryId, existingTransactionId, ids.debitAccountId, "app-atomic-existing-credit", ids.creditAccountId],
+      [conflictingEntryId, existingTransactionId, ids.debitAccountId, "00000000-0000-4000-8000-0000000000e2", ids.creditAccountId],
     );
 
     const newTransactionId = randomUUID();
