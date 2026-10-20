@@ -105,6 +105,45 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     expect(stored.rows).toEqual([{ id: "provider-txn-first" }]);
   });
 
+  it("deduplicates concurrent provider retries at the database boundary", async () => {
+    const ownerId = "owner-provider-concurrent-retry";
+    const providerId = "00000000-0000-4000-8000-00000000000a";
+    await query("INSERT INTO users (id) VALUES ($1)", [ownerId]);
+    await query("INSERT INTO providers (id, name) VALUES ($1, $2)", [
+      providerId,
+      "Bank A",
+    ]);
+
+    const concurrentPool = new Pool({
+      connectionString: databaseUrl,
+      max: 2,
+      options: `-c search_path=${schema},public`,
+    });
+    const insert = `INSERT INTO transactions
+      (id, owner_id, type, occurred_at, amount_minor, currency, source_kind, provider_id, external_id)
+      VALUES ($1, $2, 'expense', '2026-10-01T10:00:00Z', 100, 'KES', 'provider_file', $3, 'concurrent-row-1')
+      ON CONFLICT (owner_id, provider_id, external_id)
+      WHERE provider_id IS NOT NULL AND external_id IS NOT NULL
+      DO NOTHING
+      RETURNING id`;
+
+    try {
+      const outcomes = await Promise.all([
+        concurrentPool.query(insert, ["provider-concurrent-a", ownerId, providerId]),
+        concurrentPool.query(insert, ["provider-concurrent-b", ownerId, providerId]),
+      ]);
+      expect(outcomes.reduce((count, outcome) => count + outcome.rows.length, 0)).toBe(1);
+
+      const stored = await query(
+        "SELECT id FROM transactions WHERE owner_id = $1 AND provider_id = $2 AND external_id = $3",
+        [ownerId, providerId, "concurrent-row-1"],
+      );
+      expect(stored.rows).toHaveLength(1);
+    } finally {
+      await concurrentPool.end();
+    }
+  });
+
   it("scopes provider idempotency to owner and provider", async () => {
     await query("INSERT INTO users (id) VALUES ($1), ($2)", [
       "owner-provider-scope-a",
