@@ -131,8 +131,8 @@ export function forecastCashFlow(input: {
   } catch {
     throw new Error(`Unsupported forecast currency: ${input.currency}`);
   }
-  if (horizonDays !== 30 && horizonDays !== 60 && horizonDays !== 90) {
-    throw new Error(`Unsupported forecast horizon: ${horizonDays}`);
+  if (!Number.isSafeInteger(horizonDays) || horizonDays <= 0) {
+    throw new Error(`Forecast horizon must be a positive safe integer: ${horizonDays}`);
   }
   const startingBalanceMinor = parseMinorUnits(input.startingBalanceMinor, "Starting balance");
   const averageMonthlyIncomeMinor = parseMinorUnits(input.averageMonthlyIncomeMinor, "Average monthly income");
