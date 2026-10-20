@@ -8,6 +8,39 @@ const recurring: readonly RecurringTransaction[] = [
 ];
 
 describe("forecastCashFlow", () => {
+  it("rejects unsafe numeric forecast amounts", () => {
+    expect(() => forecastCashFlow({
+      currency: "KES",
+      startingBalanceMinor: Number.MAX_SAFE_INTEGER + 1,
+      averageMonthlyIncomeMinor: 0n,
+      averageMonthlyExpenseMinor: 0n,
+    })).toThrow("Starting balance must be a safe integer when provided as a number");
+
+    expect(() => forecastCashFlow({
+      currency: "KES",
+      startingBalanceMinor: 0n,
+      averageMonthlyIncomeMinor: 1.5,
+      averageMonthlyExpenseMinor: 0n,
+    })).toThrow("Average monthly income must be a safe integer when provided as a number");
+  });
+
+  it("rejects unsupported forecast currencies and horizons", () => {
+    expect(() => forecastCashFlow({
+      currency: "ZZZ" as "KES",
+      startingBalanceMinor: 0n,
+      averageMonthlyIncomeMinor: 0n,
+      averageMonthlyExpenseMinor: 0n,
+    })).toThrow("Unsupported forecast currency: ZZZ");
+
+    expect(() => forecastCashFlow({
+      currency: "KES",
+      startingBalanceMinor: 0n,
+      averageMonthlyIncomeMinor: 0n,
+      averageMonthlyExpenseMinor: 0n,
+      horizonDays: 45 as 30,
+    })).toThrow("Unsupported forecast horizon: 45");
+  });
+
   it("adds recurring transactions as discrete events on top of the baseline", () => {
     const forecast = forecastCashFlow({ currency: "KES", startingBalanceMinor: 50000n, averageMonthlyIncomeMinor: 0n, averageMonthlyExpenseMinor: 0n, recurring, asOf: "2026-09-01T00:00:00Z", horizonDays: 30 });
     expect(forecast.projectedIncomeMinor).toBe(100000n);
