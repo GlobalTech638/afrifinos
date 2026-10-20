@@ -72,9 +72,9 @@ describe("assessAffordability", () => {
 
   it("rejects unsupported currencies before calculating affordability", () => {
     expect(() => assessAffordability({
-      currency: "ZZZ",
+      currency: "ZZZ" as CashForecast["currency"],
       purchaseAmountMinor: 100n,
-      forecast: { ...forecast(100_000n, 200_000n, 50_000n), currency: "ZZZ" },
+      forecast: { ...forecast(100_000n, 200_000n, 50_000n), currency: "ZZZ" as CashForecast["currency"] },
     })).toThrow("Unsupported affordability currency: ZZZ");
   });
 
