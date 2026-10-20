@@ -175,6 +175,95 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     expect(entries.rows).toHaveLength(0);
   });
 
+  it("rolls back application transaction writes when a ledger entry ID conflicts", async () => {
+    const ids = await seed("owner-app-atomic", "app-atomic");
+    const existingTransactionId = ids.transactionId;
+    const conflictingEntryId = "app-atomic-existing-debit";
+    await query(
+      "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
+      [conflictingEntryId, existingTransactionId, ids.debitAccountId, "app-atomic-existing-credit", ids.creditAccountId],
+    );
+
+    const newTransactionId = randomUUID();
+    const transaction = {
+      transactionId: newTransactionId,
+      ownerId: "owner-app-atomic",
+      type: "expense" as const,
+      status: "posted" as const,
+      occurredAt: "2026-10-01T10:00:00.000Z",
+      total: { amountMinor: 100n, currency: "KES" as const },
+      provenance: { sourceKind: "manual" as const, importedAt: "2026-10-01T10:01:00.000Z" },
+    };
+    const entries = [
+      {
+        entryId: conflictingEntryId,
+        transactionId: newTransactionId,
+        accountId: ids.debitAccountId,
+        currency: "KES" as const,
+        amountMinor: 100n,
+        direction: "debit" as const,
+        postedAt: transaction.occurredAt,
+      },
+      {
+        entryId: randomUUID(),
+        transactionId: newTransactionId,
+        accountId: ids.creditAccountId,
+        currency: "KES" as const,
+        amountMinor: 100n,
+        direction: "credit" as const,
+        postedAt: transaction.occurredAt,
+      },
+    ] as const;
+
+    const repositoryClient = {
+      async query(text: string, values: readonly unknown[] = []) {
+        const client = await pool.connect();
+        try {
+          await client.query(`SET search_path TO "${schema}", public`);
+          const result = await client.query(text, [...values]);
+          return { rows: result.rows as Record<string, unknown>[] };
+        } finally {
+          client.release();
+        }
+      },
+      async transaction<T>(work: (tx: import("./postgres.js").SqlClient) => Promise<T>): Promise<T> {
+        const client = await pool.connect();
+        try {
+          await client.query(`SET search_path TO "${schema}", public`);
+          await client.query("BEGIN");
+          const tx = {
+            async query(text: string, values: readonly unknown[] = []) {
+              const result = await client.query(text, [...values]);
+              return { rows: result.rows as Record<string, unknown>[] };
+            },
+            async transaction<U>(nested: (tx: import("./postgres.js").SqlClient) => Promise<U>): Promise<U> {
+              return nested(tx as unknown as import("./postgres.js").SqlClient);
+            },
+          };
+          const result = await work(tx as unknown as import("./postgres.js").SqlClient);
+          await client.query("COMMIT");
+          return result;
+        } catch (error) {
+          await client.query("ROLLBACK").catch(() => undefined);
+          throw error;
+        } finally {
+          client.release();
+        }
+      },
+    };
+
+    const repository = new (await import("./postgres.js")).PostgresFinancialRepository(repositoryClient);
+    await expect(repository.saveTransactionWithLedger(transaction, entries))
+      .rejects.toThrow("Ledger entry id conflict with different data");
+
+    const transactionRows = await query("SELECT id FROM transactions WHERE id = $1", [newTransactionId]);
+    expect(transactionRows.rows).toHaveLength(0);
+    const ledgerRows = await query("SELECT id FROM ledger_entries WHERE transaction_id = $1", [newTransactionId]);
+    expect(ledgerRows.rows).toHaveLength(0);
+    const existingRows = await query("SELECT id FROM ledger_entries WHERE id = $1", [conflictingEntryId]);
+    expect(existingRows.rows).toHaveLength(1);
+  });
+
   it("allows a complete balanced posting to commit", async () => {
     const ids = await seed("owner-balanced", "balanced");
     const client = await pool.connect();
