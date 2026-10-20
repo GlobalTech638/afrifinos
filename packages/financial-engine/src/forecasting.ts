@@ -1,4 +1,4 @@
-import type { CurrencyCode, Obligation, ObligationRecurrence } from "@afrifinos/financial-domain";
+import { currencyCode, getCurrencyDefinition, type CurrencyCode, type Obligation, type ObligationRecurrence } from "@afrifinos/financial-domain";
 import type { RecurringCadence, RecurringTransaction } from "./temporal-intelligence.js";
 
 export type ForecastHorizonDays = 30 | 60 | 90;
@@ -103,6 +103,17 @@ function absolute(value: bigint): bigint {
   return value < 0n ? -value : value;
 }
 
+function parseMinorUnits(value: bigint | number | string, field: string): bigint {
+  if (typeof value === "number" && !Number.isSafeInteger(value)) {
+    throw new Error(`${field} must be a safe integer when provided as a number`);
+  }
+  try {
+    return BigInt(value);
+  } catch {
+    throw new Error(`${field} must be an integer amount in minor currency units`);
+  }
+}
+
 export function forecastCashFlow(input: {
   readonly currency: CurrencyCode;
   readonly startingBalanceMinor: bigint | number | string;
@@ -115,10 +126,18 @@ export function forecastCashFlow(input: {
   readonly horizonDays?: ForecastHorizonDays;
 }): CashForecast {
   const horizonDays = input.horizonDays ?? 90;
-  const startingBalanceMinor = BigInt(input.startingBalanceMinor);
-  const averageMonthlyIncomeMinor = BigInt(input.averageMonthlyIncomeMinor);
-  const averageMonthlyExpenseMinor = BigInt(input.averageMonthlyExpenseMinor);
-  const safetyBufferMinor = BigInt(input.safetyBufferMinor ?? 0);
+  try {
+    getCurrencyDefinition(currencyCode(input.currency));
+  } catch {
+    throw new Error(`Unsupported forecast currency: ${input.currency}`);
+  }
+  if (horizonDays !== 30 && horizonDays !== 60 && horizonDays !== 90) {
+    throw new Error(`Unsupported forecast horizon: ${horizonDays}`);
+  }
+  const startingBalanceMinor = parseMinorUnits(input.startingBalanceMinor, "Starting balance");
+  const averageMonthlyIncomeMinor = parseMinorUnits(input.averageMonthlyIncomeMinor, "Average monthly income");
+  const averageMonthlyExpenseMinor = parseMinorUnits(input.averageMonthlyExpenseMinor, "Average monthly expense");
+  const safetyBufferMinor = parseMinorUnits(input.safetyBufferMinor ?? 0, "Safety buffer");
   if (averageMonthlyIncomeMinor < 0n || averageMonthlyExpenseMinor < 0n || safetyBufferMinor < 0n) throw new Error("Forecast amounts cannot be negative");
 
   const start = new Date(input.asOf ?? new Date().toISOString());
