@@ -58,6 +58,22 @@ describe("buildFinancialSummary", () => {
     expect(summary.healthScore.methodologyVersion).toBe("2026-09-v1");
   });
 
+  it("includes months without spending when calculating emergency runway", () => {
+    const history: readonly Transaction[] = [
+      { transactionId: "jan-expense", ownerId: "user-1", type: "expense", status: "posted", occurredAt: "2026-01-10T08:00:00Z", description: "Food", total: { amountMinor: 1000n, currency: "KES" }, provenance: { sourceKind: "manual", importedAt: "2026-01-10T08:00:00Z" } },
+      { transactionId: "mar-expense", ownerId: "user-1", type: "expense", status: "posted", occurredAt: "2026-03-10T08:00:00Z", description: "Food", total: { amountMinor: 2000n, currency: "KES" }, provenance: { sourceKind: "manual", importedAt: "2026-03-10T08:00:00Z" } },
+    ];
+    const summary = buildFinancialSummary({
+      accounts,
+      entries: [],
+      transactions: history,
+      currency: "KES",
+      openingBalances: new Map([["mpesa", 6000n], ["bank", 0n]]),
+    });
+
+    expect(summary.resilience.emergencyRunwayMonths).toBe(6);
+  });
+
   it("counts only explicitly classified debt-service obligations", () => {
     const obligations: readonly Obligation[] = [
       { obligationId: "loan", ownerId: "user-1", name: "Loan repayment", amount: { amountMinor: 10000n, currency: "KES" }, status: "active", recurring: true, recurrence: "monthly", kind: "debt_service" },
