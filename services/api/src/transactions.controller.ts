@@ -31,6 +31,7 @@ const SOURCE_KINDS = new Set<NonNullable<CreateTransactionBody["sourceKind"]>>([
 function parseAmountMinor(value: string | number): bigint {
   try {
     if (typeof value === "number" && !Number.isSafeInteger(value)) throw new Error("unsafe number");
+    if (typeof value !== "number" && (typeof value !== "string" || !/^-?\\d+$/.test(value.trim()))) throw new Error("invalid integer");
     const parsed = BigInt(value);
     if (parsed === 0n) throw new Error("zero amount");
     return parsed;
@@ -59,10 +60,13 @@ export class TransactionsController {
 
   @Post()
   async create(@OwnerId() ownerId: string, @Body() body: CreateTransactionBody) {
-    if (!body.primaryAccountId?.trim() || !body.counterAccountId?.trim()) {
+    if (!body || typeof body.primaryAccountId !== "string" || typeof body.counterAccountId !== "string" || !body.primaryAccountId.trim() || !body.counterAccountId.trim()) {
       throw new BadRequestException("primaryAccountId and counterAccountId are required");
     }
-    if (!body.description?.trim()) throw new BadRequestException("description is required");
+    if (typeof body.description !== "string" || !body.description.trim()) throw new BadRequestException("description is required");
+    if (body.counterparty !== undefined && typeof body.counterparty !== "string") throw new BadRequestException("counterparty must be a string");
+    if (body.externalId !== undefined && typeof body.externalId !== "string") throw new BadRequestException("externalId must be a string");
+    if (body.providerId !== undefined && typeof body.providerId !== "string") throw new BadRequestException("providerId must be a string");
     let parsedCurrency: RawTransaction["currency"];
     try {
       parsedCurrency = currencyCode(body.currency ?? "");
