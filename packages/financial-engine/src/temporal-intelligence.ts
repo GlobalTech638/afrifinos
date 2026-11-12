@@ -128,7 +128,7 @@ export function calculateMonthlyForecastBaseline(
   }
 
   const monthIndexes = periods.map(({ period }) => {
-    const match = /^(\\d{4})-(\\d{2})$/.exec(period);
+    const match = /^(\d{4})-(\d{2})$/.exec(period);
     if (!match) throw new Error(`Invalid monthly period: ${period}`);
     const year = Number(match[1]);
     const month = Number(match[2]);
