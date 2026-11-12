@@ -55,6 +55,17 @@ describe("temporal intelligence", () => {
     expect(result.averageMonthlyExpenseMinor).toBe(75000n);
   });
 
+  it("includes calendar months with no transactions in forecast baselines", () => {
+    const result = calculateMonthlyForecastBaseline([
+      { period: "2026-01", incomeMinor: 90000n, expenseMinor: 30000n, netCashFlowMinor: 60000n, transactionCount: 2 },
+      { period: "2026-03", incomeMinor: 0n, expenseMinor: 60000n, netCashFlowMinor: -60000n, transactionCount: 1 },
+    ]);
+
+    expect(result.monthsObserved).toBe(3);
+    expect(result.averageMonthlyIncomeMinor).toBe(30000n);
+    expect(result.averageMonthlyExpenseMinor).toBe(30000n);
+  });
+
   it("returns zero baselines when there is no observed history", () => {
     expect(calculateMonthlyForecastBaseline([])).toEqual({
       monthsObserved: 0,
