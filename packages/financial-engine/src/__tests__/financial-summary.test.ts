@@ -99,6 +99,17 @@ describe("buildFinancialSummary", () => {
     expect(summary.debt.debtServiceMinor).toBe(12000n);
   });
 
+  it("excludes other-currency ledger entries from cash-flow totals", () => {
+    const mixedCurrencyEntries: readonly LedgerEntry[] = [
+      ...entries,
+      { entryId: "usd-income", transactionId: "salary", accountId: "usd-account", currency: "USD", amountMinor: 900000n, direction: "credit", postedAt: "2026-09-01T08:00:00Z" },
+      { entryId: "usd-expense", transactionId: "food", accountId: "usd-account", currency: "USD", amountMinor: 800000n, direction: "debit", postedAt: "2026-09-02T08:00:00Z" },
+    ];
+    const summary = buildFinancialSummary({ accounts, entries: mixedCurrencyEntries, transactions, currency: "KES" });
+    expect(summary.cashFlow.incomeMinor).toBe(100000n);
+    expect(summary.cashFlow.expenseMinor).toBe(25000n);
+  });
+
   it("rejects mixed currencies in assets", () => {
     expect(() => buildFinancialSummary({
       accounts,
