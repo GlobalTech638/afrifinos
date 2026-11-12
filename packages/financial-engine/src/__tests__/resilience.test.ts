@@ -38,6 +38,14 @@ describe("resilience metrics", () => {
     ], "KES").normalizedVolatility).toBeNull();
   });
 
+  it("weights aggregate goal progress by target value rather than goal count", () => {
+    const result = calculateGoalProgress([
+      { current: { amountMinor: 10_000n }, target: { amountMinor: 10_000n }, status: "active" },
+      { current: { amountMinor: 0n }, target: { amountMinor: 90_000n }, status: "active" },
+    ]);
+    expect(result.weightedProgress).toBe(0.1);
+  });
+
   it("calculates average progress across active and completed goals", () => {
     const result = calculateGoalProgress([
       { current: { amountMinor: 50_000n }, target: { amountMinor: 100_000n }, status: "active" },
