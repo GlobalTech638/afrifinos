@@ -66,11 +66,20 @@ export function calculateEmergencyRunway(
 export function calculateGoalProgress(goals: readonly { current: { amountMinor: bigint }; target: { amountMinor: bigint }; status: string }[]): GoalProgress {
   const active = goals.filter((goal) => goal.status === "active" || goal.status === "completed");
   if (!active.length) return { activeGoals: 0, weightedProgress: null };
-  const progress = active.reduce((sum, goal) => {
-    if (goal.target.amountMinor <= 0n) return sum;
-    return sum + Math.min(1, Math.max(0, ratioOfBigInts(goal.current.amountMinor, goal.target.amountMinor)));
-  }, 0);
-  return { activeGoals: active.length, weightedProgress: progress / active.length };
+  let totalTargetMinor = 0n;
+  let totalProgressMinor = 0n;
+  for (const goal of active) {
+    if (goal.target.amountMinor <= 0n) continue;
+    totalTargetMinor += goal.target.amountMinor;
+    const progress = goal.current.amountMinor < 0n ? 0n
+      : goal.current.amountMinor > goal.target.amountMinor ? goal.target.amountMinor
+        : goal.current.amountMinor;
+    totalProgressMinor += progress;
+  }
+  return {
+    activeGoals: active.length,
+    weightedProgress: totalTargetMinor > 0n ? ratioOfBigInts(totalProgressMinor, totalTargetMinor) : null,
+  };
 }
 
 function absolute(value: bigint): bigint {
