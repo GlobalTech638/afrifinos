@@ -85,16 +85,20 @@ export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSu
 }
 
 function calculateAverageMonthlyExpense(transactions: readonly Transaction[], currency: Money["currency"]): bigint {
-  const periods = new Set<string>();
+  let firstMonth: number | undefined;
+  let lastMonth: number | undefined;
   let total = 0n;
   for (const transaction of transactions) {
     if (transaction.total.currency !== currency || (transaction.type !== "expense" && transaction.type !== "fee")) continue;
     const date = new Date(transaction.occurredAt);
     if (Number.isNaN(date.getTime())) continue;
-    periods.add(date.toISOString().slice(0, 7));
+    const month = date.getUTCFullYear() * 12 + date.getUTCMonth();
+    firstMonth = firstMonth === undefined ? month : Math.min(firstMonth, month);
+    lastMonth = lastMonth === undefined ? month : Math.max(lastMonth, month);
     total += absolute(transaction.total.amountMinor);
   }
-  return periods.size > 0 ? total / BigInt(periods.size) : 0n;
+  if (firstMonth === undefined || lastMonth === undefined) return 0n;
+  return total / BigInt(lastMonth - firstMonth + 1);
 }
 
 function absolute(value: bigint): bigint {
