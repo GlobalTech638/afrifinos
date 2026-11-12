@@ -1,4 +1,4 @@
-import type { CurrencyCode } from "@afrifinos/financial-domain";
+import { currencyCode, getCurrencyDefinition, type CurrencyCode } from "@afrifinos/financial-domain";
 
 export type NormalizedTransactionType = "income" | "expense" | "transfer" | "fee" | "refund" | "reversal" | "adjustment";
 
@@ -28,16 +28,36 @@ const feePatterns = [/fee/i, /charge/i, /commission/i, /levy/i, /excise/i];
 const refundPatterns = [/refund/i, /reversal/i, /reverted/i, /cashback/i];
 
 export function normalizeTransaction(input: RawTransaction): NormalizedTransaction {
+  if (typeof input.description !== "string") throw new Error("Transaction description must be a string");
   const description = input.description.trim().replace(/\s+/g, " ");
   if (!description) throw new Error("Transaction description cannot be empty");
+  if (typeof input.amountMinor === "number" && !Number.isSafeInteger(input.amountMinor)) {
+    throw new Error("Transaction amount must be a safe integer when provided as a number");
+  }
+  let amountMinor: bigint;
+  try {
+    amountMinor = BigInt(input.amountMinor);
+  } catch {
+    throw new Error("Transaction amount must be an integer in minor currency units");
+  }
+  if (amountMinor === 0n) throw new Error("Transaction amount cannot be zero");
+  const occurredAt = new Date(input.occurredAt);
+  if (Number.isNaN(occurredAt.getTime())) throw new Error("Transaction date must be valid");
+  let parsedCurrency: CurrencyCode;
+  try {
+    parsedCurrency = currencyCode(input.currency);
+    getCurrencyDefinition(parsedCurrency);
+  } catch {
+    throw new Error("Transaction currency is not supported");
+  }
 
-  const type = input.type ?? inferTransactionType(description, input.amountMinor);
+  const type = input.type ?? inferTransactionType(description, amountMinor);
   return {
     ...(input.externalId ? { externalId: input.externalId } : {}),
-    occurredAt: new Date(input.occurredAt).toISOString(),
+    occurredAt: occurredAt.toISOString(),
     description,
-    amountMinor: BigInt(input.amountMinor),
-    currency: input.currency,
+    amountMinor,
+    currency: parsedCurrency,
     type,
     ...(input.counterparty?.trim() ? { counterparty: input.counterparty.trim() } : {}),
   };
