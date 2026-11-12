@@ -48,7 +48,7 @@ export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSu
 
   const incomeTransactionIds = new Set(input.transactions.filter((transaction) => transaction.type === "income").map((transaction) => transaction.transactionId));
   const expenseTransactionIds = new Set(input.transactions.filter((transaction) => transaction.type === "expense" || transaction.type === "fee").map((transaction) => transaction.transactionId));
-  const cashFlow = calculateCashFlow(input.entries, incomeTransactionIds, expenseTransactionIds);
+  const cashFlow = calculateCashFlow(input.entries, incomeTransactionIds, expenseTransactionIds, input.currency);
   const savings = calculateSavingsMetrics(cashFlow.incomeMinor, cashFlow.expenseMinor);
 
   const debtServiceMinor = input.debtServiceMinor ?? calculateMonthlyDebtService(
