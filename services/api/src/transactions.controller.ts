@@ -31,7 +31,7 @@ const SOURCE_KINDS = new Set<NonNullable<CreateTransactionBody["sourceKind"]>>([
 function parseAmountMinor(value: string | number): bigint {
   try {
     if (typeof value === "number" && !Number.isSafeInteger(value)) throw new Error("unsafe number");
-    if (typeof value !== "number" && (typeof value !== "string" || !/^-?\\d+$/.test(value.trim()))) throw new Error("invalid integer");
+    if (typeof value !== "number" && (typeof value !== "string" || !/^-?\d+$/.test(value.trim()))) throw new Error("invalid integer");
     const parsed = BigInt(value);
     if (parsed === 0n) throw new Error("zero amount");
     return parsed;
