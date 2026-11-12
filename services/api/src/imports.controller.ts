@@ -37,6 +37,9 @@ export class ImportsController {
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : "Invalid CSV input");
     }
+    if (!body.providerId?.trim() && parsed.rows.some((row) => row.externalId)) {
+      throw new BadRequestException("providerId is required when CSV rows contain external_id values");
+    }
     const result = ingestTransactionBatch(this.repository, {
       ownerId,
       primaryAccountId: body.primaryAccountId.trim(),
