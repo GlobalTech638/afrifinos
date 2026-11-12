@@ -21,13 +21,15 @@ export class ImportsController {
 
   @Post("csv")
   async importCsv(@OwnerId() ownerId: string, @Body() body: CsvImportBody) {
-    if (!body.csv?.trim()) throw new BadRequestException("csv is required");
-    if (!body.primaryAccountId?.trim() || !body.counterAccountId?.trim()) {
+    if (!body || typeof body.csv !== "string" || !body.csv.trim()) throw new BadRequestException("csv is required");
+    if (typeof body.primaryAccountId !== "string" || typeof body.counterAccountId !== "string" || !body.primaryAccountId.trim() || !body.counterAccountId.trim()) {
       throw new BadRequestException("primaryAccountId and counterAccountId are required");
     }
-    if (body.providerId !== undefined && !body.providerId.trim()) {
+    if (body.providerId !== undefined && (typeof body.providerId !== "string" || !body.providerId.trim())) {
       throw new BadRequestException("providerId cannot be empty");
     }
+
+    if (body.csv.length > 10_000_000) throw new BadRequestException("CSV exceeds the 10 MB import limit");
 
     let parsed: ReturnType<typeof parseTransactionCsv>;
     try {
