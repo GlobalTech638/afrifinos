@@ -53,11 +53,8 @@ export async function ingestTransactionBatch(
         input,
       }));
     } catch (error) {
-      failures.push({
-        input,
-        index,
-        message: error instanceof TransactionInputError ? error.message : "Transaction ingestion failed",
-      });
+      if (!(error instanceof TransactionInputError)) throw error;
+      failures.push({ input, index, message: error.message });
     }
   }
 
