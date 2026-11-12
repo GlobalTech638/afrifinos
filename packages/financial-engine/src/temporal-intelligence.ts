@@ -127,12 +127,21 @@ export function calculateMonthlyForecastBaseline(
     return { monthsObserved: 0, averageMonthlyIncomeMinor: 0n, averageMonthlyExpenseMinor: 0n };
   }
 
+  const monthIndexes = periods.map(({ period }) => {
+    const match = /^(\\d{4})-(\\d{2})$/.exec(period);
+    if (!match) throw new Error(`Invalid monthly period: ${period}`);
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    if (month < 1 || month > 12) throw new Error(`Invalid monthly period: ${period}`);
+    return year * 12 + month - 1;
+  });
+  const monthsObserved = Math.max(...monthIndexes) - Math.min(...monthIndexes) + 1;
   const totalIncome = periods.reduce((sum, period) => sum + period.incomeMinor, 0n);
   const totalExpense = periods.reduce((sum, period) => sum + period.expenseMinor, 0n);
-  const divisor = BigInt(periods.length);
+  const divisor = BigInt(monthsObserved);
 
   return {
-    monthsObserved: periods.length,
+    monthsObserved,
     averageMonthlyIncomeMinor: totalIncome / divisor,
     averageMonthlyExpenseMinor: totalExpense / divisor,
   };
