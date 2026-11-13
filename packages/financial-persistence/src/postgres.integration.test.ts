@@ -808,6 +808,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
 
   it("serializes a ledger posting against an earlier account currency update", async () => {
     const ids = await seed("owner-account-update-first", "account-update-first");
+    // The shared test pool is intentionally single-connection; lock-race cases need two sessions.
     const concurrencyPool = new Pool({
       connectionString: databaseUrl,
       max: 2,
@@ -848,6 +849,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
 
   it("prevents an account currency update from invalidating a concurrent committed posting", async () => {
     const ids = await seed("owner-posting-first", "posting-first");
+    // The shared test pool is intentionally single-connection; lock-race cases need two sessions.
     const concurrencyPool = new Pool({
       connectionString: databaseUrl,
       max: 2,
