@@ -41,7 +41,7 @@ export function ratioOfBigInts(numerator: bigint, denominator: bigint): number {
   return sign * (numeratorSignificand / denominatorSignificand) * 10 ** exponent;
 }
 
-export function calculateCashFlow(entries: readonly LedgerEntry[], incomeTransactionIds: ReadonlySet<string>, expenseTransactionIds: ReadonlySet<string>, currency?: string): CashFlowSummary {
+export function calculateCashFlow(entries: readonly LedgerEntry[], incomeTransactionIds: ReadonlySet<string>, expenseTransactionIds: ReadonlySet<string>, currency?: string, refundTransactionIds: ReadonlySet<string> = new Set()): CashFlowSummary {
   let incomeMinor = 0n;
   let expenseMinor = 0n;
   for (const entry of entries) {
@@ -49,6 +49,8 @@ export function calculateCashFlow(entries: readonly LedgerEntry[], incomeTransac
     const amount = signedAmount(entry);
     if (incomeTransactionIds.has(entry.transactionId) && amount > 0n) incomeMinor += amount;
     if (expenseTransactionIds.has(entry.transactionId) && amount < 0n) expenseMinor += -amount;
+    // Refunds are contra-expense cash inflows, not earned income.
+    if (refundTransactionIds.has(entry.transactionId) && amount > 0n) expenseMinor -= amount;
   }
   return { incomeMinor, expenseMinor, netCashFlowMinor: incomeMinor - expenseMinor };
 }
