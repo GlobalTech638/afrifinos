@@ -22,16 +22,36 @@ export function calculateSpendingVolatility(
   currency: CurrencyCode,
 ): SpendingVolatility {
   const monthly = new Map<string, bigint>();
+  let firstMonth: number | undefined;
+  let lastMonth: number | undefined;
   for (const transaction of transactions) {
-    if (transaction.total.currency !== currency || transaction.type !== "expense") continue;
+    if (transaction.total.currency !== currency ||
+      (transaction.type !== "expense" && transaction.type !== "fee" && transaction.type !== "refund")) continue;
     const date = new Date(transaction.occurredAt);
     if (Number.isNaN(date.getTime())) continue;
+    const monthIndex = date.getUTCFullYear() * 12 + date.getUTCMonth();
+    firstMonth = firstMonth === undefined ? monthIndex : Math.min(firstMonth, monthIndex);
+    lastMonth = lastMonth === undefined ? monthIndex : Math.max(lastMonth, monthIndex);
     const period = date.toISOString().slice(0, 7);
-    monthly.set(period, (monthly.get(period) ?? 0n) + absolute(transaction.total.amountMinor));
+    const signedExpense = transaction.type === "refund"
+      ? -absolute(transaction.total.amountMinor)
+      : absolute(transaction.total.amountMinor);
+    monthly.set(period, (monthly.get(period) ?? 0n) + signedExpense);
   }
 
-  const values = [...monthly.values()];
-  if (values.length < 2) return { monthlyExpenseCoefficient: null, normalizedVolatility: null };
+  if (firstMonth === undefined || lastMonth === undefined || lastMonth - firstMonth < 1) {
+    return { monthlyExpenseCoefficient: null, normalizedVolatility: null };
+  }
+  // Include zero-spend months and net refunds against expenses. A refund must
+  // never create negative monthly spending or inflate the volatility baseline.
+  const values: bigint[] = [];
+  for (let month = firstMonth; month <= lastMonth; month += 1) {
+    const year = Math.floor(month / 12);
+    const monthOfYear = month % 12;
+    const key = `${year}-${String(monthOfYear + 1).padStart(2, "0")}`;
+    const net = monthly.get(key) ?? 0n;
+    values.push(net > 0n ? net : 0n);
+  }
 
   const total = values.reduce((sum, value) => sum + value, 0n);
   if (total <= 0n) return { monthlyExpenseCoefficient: null, normalizedVolatility: null };
