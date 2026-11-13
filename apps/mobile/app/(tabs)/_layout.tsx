@@ -13,6 +13,7 @@ export default function TabLayout() {
     <Tabs.Screen name="transactions" options={{ title: "Activity", tabBarIcon: () => null }} />
     <Tabs.Screen name="accounts" options={{ title: "Accounts", tabBarIcon: () => null }} />
     <Tabs.Screen name="insights" options={{ title: "Insights", tabBarIcon: () => null }} />
+    <Tabs.Screen name="planner" options={{ title: "Planner", tabBarIcon: () => null }} />
     <Tabs.Screen name="profile" options={{ title: "Profile", tabBarIcon: () => null }} />
   </Tabs>;
 }
