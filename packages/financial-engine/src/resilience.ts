@@ -25,7 +25,8 @@ export function calculateSpendingVolatility(
   let firstMonth: number | undefined;
   let lastMonth: number | undefined;
   for (const transaction of transactions) {
-    if (transaction.total.currency !== currency ||
+    if ((transaction.status !== "posted" && transaction.status !== "enriched" && transaction.status !== "reconciled") ||
+      transaction.total.currency !== currency ||
       (transaction.type !== "expense" && transaction.type !== "fee" && transaction.type !== "refund")) continue;
     const date = new Date(transaction.occurredAt);
     if (Number.isNaN(date.getTime())) continue;
