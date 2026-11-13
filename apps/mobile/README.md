@@ -42,3 +42,17 @@ Configure the API's JWT verifier to trust the same Supabase project used by the 
 ## Monorepo note
 
 The native app is excluded from the root pnpm workspace so its Expo SDK dependency graph can be installed and locked independently with npm. The existing backend/web pnpm workspace and lockfile remain unchanged.
+
+
+## Native builds with EAS
+
+After configuring an Expo account and running `npx eas-cli login`:
+
+```bash
+npx eas-cli build --platform android --profile development
+npx eas-cli build --platform android --profile preview
+npx eas-cli build --platform ios --profile preview
+npx eas-cli build --platform all --profile production
+```
+
+The GitHub Actions Android export validates the JavaScript bundle; EAS Build creates installable native artifacts. Store production signing credentials in EAS, not in this repository.
