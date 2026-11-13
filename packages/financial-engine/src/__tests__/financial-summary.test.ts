@@ -126,4 +126,32 @@ describe("buildFinancialSummary", () => {
       }],
     })).toThrow(/Currency mismatch/);
   });
+
+  it("nets refunds against expenses without misclassifying them as income", () => {
+    const refundTransaction: Transaction = {
+      transactionId: "food-refund",
+      ownerId: "user-1",
+      type: "refund",
+      status: "posted",
+      occurredAt: "2026-09-03T08:00:00Z",
+      description: "Refund for groceries",
+      total: { amountMinor: 5000n, currency: "KES" },
+      provenance: { sourceKind: "manual", importedAt: "2026-09-03T08:00:00Z" },
+    };
+    const refundEntries: readonly LedgerEntry[] = [
+      ...entries,
+      { entryId: "food-refund:primary", transactionId: "food-refund", accountId: "mpesa", currency: "KES", amountMinor: 5000n, direction: "credit", postedAt: "2026-09-03T08:00:00Z" },
+      { entryId: "food-refund:counter", transactionId: "food-refund", accountId: "expense", currency: "KES", amountMinor: 5000n, direction: "debit", postedAt: "2026-09-03T08:00:00Z" },
+    ];
+    const summary = buildFinancialSummary({
+      accounts,
+      entries: refundEntries,
+      transactions: [...transactions, refundTransaction],
+      currency: "KES",
+    });
+    expect(summary.cashFlow.incomeMinor).toBe(100000n);
+    expect(summary.cashFlow.expenseMinor).toBe(20000n);
+    expect(summary.cashFlow.netCashFlowMinor).toBe(80000n);
+  });
+
 });
