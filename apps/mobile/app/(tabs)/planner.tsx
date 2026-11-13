@@ -42,7 +42,7 @@ export default function PlannerScreen() {
   }
 
   return <Screen>
-    <Heading eyebrow="Decision support" title="Can I afford it?" subtitle="Stress-test a purchase against your cash-flow forecast and safety buffer." />
+    <Heading eyebrow="Decision support" title="Plan with confidence" subtitle="Stress-test a purchase against your cash flow and safety buffer." />
     <Card>
       <Label>Purchase amount</Label>
       <Field value={amount} onChangeText={setAmount} placeholder="e.g. 45000.00" keyboardType="decimal-pad" />
@@ -54,7 +54,7 @@ export default function PlannerScreen() {
       {error ? <ErrorText>{error}</ErrorText> : null}
       <Button title="Assess affordability" onPress={() => void assess()} busy={busy} disabled={!amount.trim()} />
     </Card>
-    {result ? <Card style={{ borderColor: result.decision.toLowerCase().includes("not") || result.decision.toLowerCase().includes("unaffordable") ? colors.danger : colors.teal }}>
+    {result ? <Card style={{ borderColor: result.decision.toLowerCase().includes("not") || result.decision.toLowerCase().includes("unaffordable") ? colors.danger : colors.lavenderStrong }}>
       <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "900", letterSpacing: 1 }}>ASSESSMENT</Text>
       <Text style={{ color: colors.ink, fontSize: 25, fontWeight: "900" }}>{result.decision.replace(/[_-]/g, " ").toUpperCase()}</Text>
       <View style={{ gap: 4 }}>
