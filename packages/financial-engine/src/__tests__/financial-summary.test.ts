@@ -163,7 +163,7 @@ describe("buildFinancialSummary", () => {
     };
     const summary = buildFinancialSummary({ accounts, entries: [], transactions: [...transactions, pendingExpense], currency: "KES" });
     expect(summary.cashFlow.expenseMinor).toBe(25000n);
-    expect(summary.resilience.emergencyRunwayMonths).toBeNull();
+    expect(summary.resilience.emergencyRunwayMonths).toBe(0);
   });
 
 });
