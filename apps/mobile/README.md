@@ -1,6 +1,6 @@
 # AfriFinos Mobile
 
-Expo + React Native application for Android, iOS and web.
+Expo + React Native application for Android and iOS. The existing Next.js application remains the web client.
 
 ## Requirements
 
@@ -16,7 +16,6 @@ cp .env.example .env
 npm install
 npx expo install --fix
 npx expo install expo-router react-native-safe-area-context react-native-screens expo-linking expo-constants expo-status-bar
-npx expo install react-native-web react-dom
 npm run start
 ```
 
@@ -26,7 +25,7 @@ Set the public environment values in `.env`:
 - `EXPO_PUBLIC_SUPABASE_URL`: Supabase project URL.
 - `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: Supabase publishable/anon key. Never use a service-role key in a mobile app.
 
-Run `npm run android`, `npm run ios`, or `npm run web` for the respective target. For iOS simulator and device builds, use macOS/Xcode or EAS Build; Android local builds require Android Studio/SDK.
+Run `npm run android` or `npm run ios` for the respective target. iOS simulator and device builds require macOS/Xcode or EAS Build; Android local builds require Android Studio/SDK. For iOS simulator and device builds, use macOS/Xcode or EAS Build; Android local builds require Android Studio/SDK.
 
 ## Screens
 
