@@ -77,15 +77,21 @@ export const api = {
 };
 
 export function formatMinor(amountMinor: string | number | bigint, currency = "KES"): string {
-  const fractionDigits = new Set(["UGX", "RWF", "JPY", "XOF", "XAF", "BIF", "GNF", "KMF"]).has(currency) ? 0 : 2;
-  const divisor = 10 ** fractionDigits;
-  const amount = Number(BigInt(amountMinor)) / divisor;
-  return new Intl.NumberFormat("en", {
+  const zeroDecimal = new Set(["UGX", "RWF", "JPY", "XOF", "XAF", "BIF", "GNF", "KMF"]).has(currency);
+  const fractionDigits = zeroDecimal ? 0 : 2;
+  const divisor = 10n ** BigInt(fractionDigits);
+  const minor = BigInt(amountMinor);
+  const negative = minor < 0n;
+  const absolute = negative ? -minor : minor;
+  const whole = absolute / divisor;
+  const fraction = fractionDigits ? (absolute % divisor).toString().padStart(fractionDigits, "0") : "";
+  const formattedWhole = new Intl.NumberFormat("en-KE", {
     style: "currency",
     currency,
-    maximumFractionDigits: fractionDigits,
-    minimumFractionDigits: fractionDigits,
-  }).format(amount);
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+  }).format(negative ? -whole : whole);
+  return fraction ? `${formattedWhole}.${fraction}` : (negative && whole === 0n ? formattedWhole.replace(/^/, "-") : formattedWhole);
 }
 
 export function shortDate(value: string): string {
