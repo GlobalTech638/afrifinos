@@ -29,7 +29,7 @@ export default function InsightsScreen() {
       <Card style={{ backgroundColor: colors.lavender, borderColor: colors.lavender }}>
         <Text style={{ color: colors.blue, fontSize: 11, fontWeight: "800" }}>FINANCIAL HEALTH SCORE</Text>
         <Text style={{ color: colors.ink, fontSize: 42, fontWeight: "900" }}>{data.summary.healthScore.score}<Text style={{ fontSize: 16, color: colors.blue }}>/100</Text></Text>
-        <Text style={{ color: "#C8D7EA", fontSize: 12 }}>{data.summary.healthScore.band.toUpperCase()}</Text>
+        <Text style={{ color: colors.blue, fontSize: 12 }}>{data.summary.healthScore.band.toUpperCase()}</Text>
         <View style={{ height: 7, backgroundColor: colors.lavenderStrong, borderRadius: 9, marginTop: 8 }}><View style={{ height: 7, width: `${Math.max(0, Math.min(100, data.summary.healthScore.score))}%`, backgroundColor: colors.blue, borderRadius: 9 }} /></View>
       </Card>
       <View style={{ flexDirection: "row", gap: 10 }}>
