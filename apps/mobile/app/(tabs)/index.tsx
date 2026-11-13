@@ -17,12 +17,13 @@ export default function DashboardScreen() {
     if (!session) return;
     setLoading(true); setError("");
     try {
-      const [nextAccounts, intelligence] = await Promise.all([
-        api.accounts(session),
-        api.intelligence(session, "KES"),
-      ]);
+      const nextAccounts = await api.accounts(session);
       setAccounts(nextAccounts);
-      setData(intelligence);
+      if (nextAccounts.length < 2) {
+        setData(null);
+        return;
+      }
+      setData(await api.intelligence(session, "KES"));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load your dashboard");
     } finally { setLoading(false); }
@@ -57,6 +58,10 @@ export default function DashboardScreen() {
         <View style={{ flex: 1 }}><Text style={{ color: colors.muted, fontSize: 11 }}>Minimum balance</Text><Text style={{ color: colors.ink, fontWeight: "800", fontSize: 16 }}>{data ? formatMinor(data.forecast.minimumProjectedBalanceMinor, data.currency) : "—"}</Text></View>
       </View>
     </Card>
+    {accounts.length < 2 ? <Card>
+      <Heading title="Finish setting up" subtitle="Add at least two accounts to unlock balanced double-entry transaction recording and your full financial intelligence." />
+      <Link href="/(tabs)/accounts" asChild><Pressable style={{ backgroundColor: colors.navy, borderRadius: 12, padding: 13, alignItems: "center" }}><Text style={{ color: colors.white, fontWeight: "800" }}>Set up accounts</Text></Pressable></Link>
+    </Card> : null}
     <Card>
       <Heading title="Accounts" subtitle="Your connected financial accounts." />
       {accounts.length === 0 ? <Text style={{ color: colors.muted, fontSize: 12 }}>Add accounts to begin building your financial picture.</Text> : accounts.slice(0, 4).map((account) =>
