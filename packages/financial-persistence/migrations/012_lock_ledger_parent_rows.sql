@@ -1,17 +1,16 @@
 -- Close the database-level race between ledger writes and account
--- ownership/currency changes. The ledger trigger must lock the referenced
--- parent rows while validating them: a plain SELECT can observe a compatible
--- snapshot while a concurrent account UPDATE commits incompatible attributes.
+-- ownership/currency changes. The ledger trigger locks the account row while
+-- validating the reference so a concurrent account UPDATE cannot commit
+-- incompatible attributes during a posting.
 CREATE OR REPLACE FUNCTION enforce_ledger_entry_integrity()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 DECLARE
   account_owner TEXT;
-  account_currency CHAR(3);
 BEGIN
-  SELECT owner_id, currency
-    INTO account_owner, account_currency
+  SELECT owner_id
+    INTO account_owner
     FROM accounts
     WHERE id = NEW.account_id
     FOR SHARE;
