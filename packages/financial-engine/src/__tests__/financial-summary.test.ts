@@ -154,4 +154,16 @@ describe("buildFinancialSummary", () => {
     expect(summary.cashFlow.netCashFlowMinor).toBe(80000n);
   });
 
+  it("excludes unposted transactions from cash-flow and resilience metrics", () => {
+    const pendingExpense: Transaction = {
+      transactionId: "pending-food", ownerId: "user-1", type: "expense", status: "validated",
+      occurredAt: "2026-09-04T08:00:00Z", description: "Pending groceries",
+      total: { amountMinor: 90000n, currency: "KES" },
+      provenance: { sourceKind: "manual", importedAt: "2026-09-04T08:00:00Z" },
+    };
+    const summary = buildFinancialSummary({ accounts, entries: [], transactions: [...transactions, pendingExpense], currency: "KES" });
+    expect(summary.cashFlow.expenseMinor).toBe(25000n);
+    expect(summary.resilience.emergencyRunwayMonths).toBeNull();
+  });
+
 });
