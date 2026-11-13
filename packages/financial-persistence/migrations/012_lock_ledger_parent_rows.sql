@@ -1,30 +1,41 @@
--- Close the database-level race between ledger writes and account
--- ownership/currency changes. The ledger trigger locks the account row while
--- validating the reference so a concurrent account UPDATE cannot commit
--- incompatible attributes during a posting.
+-- Serialize ledger writes against both transaction and account mutations.
+-- Lock in a single, consistent order: transaction first, then account.
 CREATE OR REPLACE FUNCTION enforce_ledger_entry_integrity()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 DECLARE
+  transaction_owner TEXT;
+  transaction_currency CHAR(3);
   account_owner TEXT;
+  account_currency CHAR(3);
 BEGIN
-  SELECT owner_id
-    INTO account_owner
+  SELECT owner_id, currency
+    INTO transaction_owner, transaction_currency
+    FROM transactions
+    WHERE id = NEW.transaction_id
+    FOR UPDATE;
+
+  SELECT owner_id, currency
+    INTO account_owner, account_currency
     FROM accounts
     WHERE id = NEW.account_id
     FOR SHARE;
 
-  IF account_owner IS NULL THEN
-    RAISE EXCEPTION 'Ledger entry references a missing account'
+  IF transaction_owner IS NULL OR account_owner IS NULL THEN
+    RAISE EXCEPTION 'Ledger entry references a missing transaction or account'
       USING ERRCODE = '23503';
   END IF;
 
-  -- The existing deferred constraint trigger validates transaction ownership
-  -- and currency against the final transaction row at commit. Avoid taking a
-  -- transaction SHARE lock here: the ledger-serialization trigger takes an
-  -- UPDATE lock, and SHARE-before-UPDATE across concurrent inserts can deadlock.
-  -- Locking the account is sufficient to serialize against account mutations.
+  IF transaction_owner <> account_owner THEN
+    RAISE EXCEPTION 'Ledger account must belong to the transaction owner'
+      USING ERRCODE = '23514';
+  END IF;
+
+  IF NEW.currency <> transaction_currency OR NEW.currency <> account_currency THEN
+    RAISE EXCEPTION 'Ledger entry currency must match transaction and account currencies'
+      USING ERRCODE = '23514';
+  END IF;
 
   RETURN NEW;
 END;
