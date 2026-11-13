@@ -808,8 +808,13 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
 
   it("serializes a ledger posting against an earlier account currency update", async () => {
     const ids = await seed("owner-account-update-first", "account-update-first");
-    const updater = await pool.connect();
-    const poster = await pool.connect();
+    const concurrencyPool = new Pool({
+      connectionString: databaseUrl,
+      max: 2,
+      options: `-c search_path=${schema},public`,
+    });
+    const updater = await concurrencyPool.connect();
+    const poster = await concurrencyPool.connect();
     try {
       await updater.query(`SET search_path TO "${schema}", public`);
       await poster.query(`SET search_path TO "${schema}", public`);
@@ -832,6 +837,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
       await poster.query("ROLLBACK").catch(() => undefined);
       updater.release();
       poster.release();
+      await concurrencyPool.end();
     }
 
     const result = await query("SELECT currency FROM accounts WHERE id = $1", [ids.debitAccountId]);
@@ -842,8 +848,13 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
 
   it("prevents an account currency update from invalidating a concurrent committed posting", async () => {
     const ids = await seed("owner-posting-first", "posting-first");
-    const poster = await pool.connect();
-    const updater = await pool.connect();
+    const concurrencyPool = new Pool({
+      connectionString: databaseUrl,
+      max: 2,
+      options: `-c search_path=${schema},public`,
+    });
+    const poster = await concurrencyPool.connect();
+    const updater = await concurrencyPool.connect();
     try {
       await poster.query(`SET search_path TO "${schema}", public`);
       await updater.query(`SET search_path TO "${schema}", public`);
@@ -866,6 +877,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
       await updater.query("ROLLBACK").catch(() => undefined);
       poster.release();
       updater.release();
+      await concurrencyPool.end();
     }
 
     const account = await query("SELECT currency FROM accounts WHERE id = $1", [ids.debitAccountId]);
