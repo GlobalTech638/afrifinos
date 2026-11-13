@@ -10,15 +10,17 @@ export default function ProfileScreen() {
     catch (cause) { Alert.alert("Unable to sign out", cause instanceof Error ? cause.message : "Please try again."); }
   }
   return <Screen>
-    <Heading eyebrow="Account and security" title="Profile" subtitle="Manage your AfriFinos session and app preferences." />
-    <Card>
-      <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800" }}>SIGNED IN AS</Text>
-      <Text style={{ color: colors.ink, fontSize: 17, fontWeight: "800" }}>{session?.user.email ?? "Authenticated user"}</Text>
-      <Text style={{ color: colors.muted, fontSize: 11 }}>Identity is managed by your configured AfriFinos authentication provider.</Text>
+    <Heading eyebrow="ACCOUNT & SECURITY" title="Profile" subtitle="Your identity, preferences and account protection." />
+    <Card style={{ alignItems: "center", paddingVertical: 24 }}>
+      <View style={{ width: 70, height: 70, borderRadius: 25, backgroundColor: colors.lavender, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.blue, fontSize: 30, fontWeight: "900" }}>A</Text></View>
+      <Text style={{ color: colors.ink, fontSize: 17, fontWeight: "900" }}>{session?.user.email ?? "Authenticated user"}</Text>
+      <Text style={{ color: colors.muted, fontSize: 11 }}>AfriFinos account</Text>
+      <Text style={{ color: colors.success, fontSize: 10, fontWeight: "900", backgroundColor: colors.mint, overflow: "hidden", borderRadius: 15, paddingHorizontal: 12, paddingVertical: 6 }}>● SESSION ACTIVE</Text>
     </Card>
     <Card>
-      <Heading title="Security" subtitle="Protect access to your financial information." />
-      <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 19 }}>Your mobile session is stored using the device secure storage facility. Always protect your device, use a strong screen lock, and sign out on shared devices.</Text>
+      <Heading title="Security & privacy" subtitle="Your financial data deserves strong protection." />
+      {["Secure device session storage", "Authenticated API requests", "Protected account access"].map((item) => <View key={item} style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 }}><Text style={{ color: colors.success, fontWeight: "900" }}>✓</Text><Text style={{ color: colors.ink, fontSize: 12, fontWeight: "700" }}>{item}</Text></View>)}
+      <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 18 }}>Identity is managed by your configured AfriFinos authentication provider. Always protect your device, use a strong screen lock, and sign out on shared devices.</Text>
     </Card>
     <Card>
       <Heading title="About AfriFinos" subtitle="Your money. Your control." />
