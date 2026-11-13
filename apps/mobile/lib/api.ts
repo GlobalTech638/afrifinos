@@ -20,6 +20,13 @@ export type Transaction = {
   counterparty?: string;
 };
 
+export type AffordabilityResult = {
+  decision: string;
+  projectedMinimumBalanceMinor: string;
+  bufferShortfallMinor: string;
+  reasons: string[];
+};
+
 export type Intelligence = {
   currency: string;
   summary: {
@@ -64,6 +71,10 @@ export const api = {
     request<Intelligence>(`/financial/intelligence?currency=${encodeURIComponent(currency)}`, session),
   createAccount: (session: Session, body: { name: string; type: Account["type"]; currency: string }) =>
     request<Account>("/accounts", session, { method: "POST", body: JSON.stringify(body) }),
+  affordability: (session: Session, amountMinor: string, currency = "KES", additionalRecurringMonthlyMinor = "0") => {
+    const params = new URLSearchParams({ amountMinor, currency, additionalRecurringMonthlyMinor });
+    return request<AffordabilityResult>(`/financial/affordability?${params.toString()}`, session);
+  },
   createTransaction: (session: Session, body: {
     primaryAccountId: string;
     counterAccountId: string;
