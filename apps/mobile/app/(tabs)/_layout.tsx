@@ -1,18 +1,28 @@
 import { Tabs } from "expo-router";
+import { Text } from "react-native";
 import { colors } from "../../lib/theme";
 
+const glyphs: Record<string, string> = {
+  index: "⌂",
+  transactions: "↕",
+  accounts: "▣",
+  insights: "◔",
+  profile: "○",
+};
+
 export default function TabLayout() {
-  return <Tabs screenOptions={{
+  return <Tabs screenOptions={({ route }) => ({
     headerShown: false,
-    tabBarActiveTintColor: colors.teal,
+    tabBarActiveTintColor: colors.blue,
     tabBarInactiveTintColor: colors.muted,
-    tabBarStyle: { height: 66, paddingTop: 8, paddingBottom: 8, borderTopColor: colors.line, backgroundColor: colors.white },
-    tabBarLabelStyle: { fontSize: 10, fontWeight: "700" },
-  }}>
-    <Tabs.Screen name="index" options={{ title: "Home", tabBarIcon: () => null }} />
-    <Tabs.Screen name="transactions" options={{ title: "Activity", tabBarIcon: () => null }} />
-    <Tabs.Screen name="accounts" options={{ title: "Accounts", tabBarIcon: () => null }} />
-    <Tabs.Screen name="insights" options={{ title: "Insights", tabBarIcon: () => null }} />
-    <Tabs.Screen name="profile" options={{ title: "Profile", tabBarIcon: () => null }} />
+    tabBarStyle: { height: 70, paddingTop: 7, paddingBottom: 9, borderTopColor: colors.line, backgroundColor: colors.white, elevation: 12 },
+    tabBarLabelStyle: { fontSize: 10, fontWeight: "800" },
+    tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 22, fontWeight: "800" }}>{glyphs[route.name] ?? "•"}</Text>,
+  })}>
+    <Tabs.Screen name="index" options={{ title: "Home" }} />
+    <Tabs.Screen name="transactions" options={{ title: "Activity" }} />
+    <Tabs.Screen name="accounts" options={{ title: "Accounts" }} />
+    <Tabs.Screen name="insights" options={{ title: "Insights" }} />
+    <Tabs.Screen name="profile" options={{ title: "Profile" }} />
   </Tabs>;
 }
