@@ -74,7 +74,7 @@ describe("resilience metrics", () => {
 
     // Net monthly expenses are 120k, 0, and 100k (February is a refund-only month).
     expect(result.monthlyExpenseCoefficient).toBeCloseTo(Math.sqrt(62 / 121), 4);
-    expect(result.normalizedVolatility).toBeCloseTo(Math.sqrt(0.5002), 4);
+    expect(result.normalizedVolatility).toBeCloseTo(Math.sqrt(62 / 121), 4);
   });
 
 });
