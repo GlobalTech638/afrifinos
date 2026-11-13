@@ -73,11 +73,11 @@ export default function AddTransactionScreen() {
   }
 
   return <Screen>
-    <Heading title="Record a transaction" subtitle="Post a balanced entry between two of your accounts." />
+    <Heading eyebrow="MONEY MOVEMENT" title="Record activity" subtitle="Add a payment, deposit or transfer to your financial timeline." />
     <Card>
       <Label>Transaction type</Label>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7 }}>
-        {transactionTypes.map((value) => <Text key={value} onPress={() => setType(value)} style={{ borderRadius: 10, paddingVertical: 9, paddingHorizontal: 11, overflow: "hidden", backgroundColor: type === value ? colors.navy : colors.canvas, color: type === value ? colors.white : colors.ink, fontWeight: "700", fontSize: 11 }}>{value}</Text>)}
+        {transactionTypes.map((value) => <Text key={value} onPress={() => setType(value)} style={{ borderRadius: 10, paddingVertical: 9, paddingHorizontal: 11, overflow: "hidden", backgroundColor: type === value ? colors.blue : colors.canvas, color: type === value ? colors.white : colors.ink, fontWeight: "700", fontSize: 11 }}>{value}</Text>)}
       </View>
       <Label>Amount ({selected?.currency ?? "KES"})</Label>
       <Field value={amount} onChangeText={setAmount} placeholder="0.00" keyboardType="decimal-pad" />
@@ -90,9 +90,9 @@ export default function AddTransactionScreen() {
         if (!currentCounter || currentCounter.accountId === account.accountId || currentCounter.currency !== account.currency) {
           setCounterId(accounts.find((item) => item.accountId !== account.accountId && item.currency === account.currency)?.accountId ?? "");
         }
-      }} style={{ borderRadius: 11, padding: 12, borderWidth: 1, borderColor: primaryId === account.accountId ? colors.teal : colors.line, backgroundColor: primaryId === account.accountId ? "#E9F7F4" : colors.white }}><Text style={{ color: colors.ink, fontWeight: "700" }}>{account.name} · {account.currency}</Text></Pressable>)}</View>
+      }} style={{ borderRadius: 11, padding: 12, borderWidth: 1, borderColor: primaryId === account.accountId ? colors.blue : colors.line, backgroundColor: primaryId === account.accountId ? colors.lavender : colors.white }}><Text style={{ color: colors.ink, fontWeight: "700" }}>{account.name} · {account.currency}</Text></Pressable>)}</View>
       <Label>Counter account</Label>
-      <View style={{ gap: 7 }}>{compatibleCounters.map((account) => <Pressable key={account.accountId} onPress={() => setCounterId(account.accountId)} style={{ borderRadius: 11, padding: 12, borderWidth: 1, borderColor: counterId === account.accountId ? colors.teal : colors.line, backgroundColor: counterId === account.accountId ? "#E9F7F4" : colors.white }}><Text style={{ color: colors.ink, fontWeight: "700" }}>{account.name} · {account.currency}</Text></Pressable>)}</View>
+      <View style={{ gap: 7 }}>{compatibleCounters.map((account) => <Pressable key={account.accountId} onPress={() => setCounterId(account.accountId)} style={{ borderRadius: 11, padding: 12, borderWidth: 1, borderColor: counterId === account.accountId ? colors.blue : colors.line, backgroundColor: counterId === account.accountId ? colors.lavender : colors.white }}><Text style={{ color: colors.ink, fontWeight: "700" }}>{account.name} · {account.currency}</Text></Pressable>)}</View>
       {error ? <ErrorText>{error}</ErrorText> : null}
       <Button title="Save transaction" onPress={() => void submit()} busy={busy} disabled={!description.trim() || !amount.trim() || compatibleCounters.length < 1} />
     </Card>
