@@ -48,7 +48,8 @@ export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSu
 
   const incomeTransactionIds = new Set(input.transactions.filter((transaction) => transaction.type === "income").map((transaction) => transaction.transactionId));
   const expenseTransactionIds = new Set(input.transactions.filter((transaction) => transaction.type === "expense" || transaction.type === "fee").map((transaction) => transaction.transactionId));
-  const cashFlow = calculateCashFlow(input.entries, incomeTransactionIds, expenseTransactionIds, input.currency);
+  const refundTransactionIds = new Set(input.transactions.filter((transaction) => transaction.type === "refund").map((transaction) => transaction.transactionId));
+  const cashFlow = calculateCashFlow(input.entries, incomeTransactionIds, expenseTransactionIds, input.currency, refundTransactionIds);
   const savings = calculateSavingsMetrics(cashFlow.incomeMinor, cashFlow.expenseMinor);
 
   const debtServiceMinor = input.debtServiceMinor ?? calculateMonthlyDebtService(
@@ -89,13 +90,13 @@ function calculateAverageMonthlyExpense(transactions: readonly Transaction[], cu
   let lastMonth: number | undefined;
   let total = 0n;
   for (const transaction of transactions) {
-    if (transaction.total.currency !== currency || (transaction.type !== "expense" && transaction.type !== "fee")) continue;
+    if (transaction.total.currency !== currency || (transaction.type !== "expense" && transaction.type !== "fee" && transaction.type !== "refund")) continue;
     const date = new Date(transaction.occurredAt);
     if (Number.isNaN(date.getTime())) continue;
     const month = date.getUTCFullYear() * 12 + date.getUTCMonth();
     firstMonth = firstMonth === undefined ? month : Math.min(firstMonth, month);
     lastMonth = lastMonth === undefined ? month : Math.max(lastMonth, month);
-    total += absolute(transaction.total.amountMinor);
+    total += transaction.type === "refund" ? -absolute(transaction.total.amountMinor) : absolute(transaction.total.amountMinor);
   }
   if (firstMonth === undefined || lastMonth === undefined) return 0n;
   return total / BigInt(lastMonth - firstMonth + 1);
