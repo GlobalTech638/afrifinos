@@ -35,6 +35,7 @@ export default function AddTransactionScreen() {
   }, [session]);
 
   const selected = accounts.find((account) => account.accountId === primaryId);
+  const compatibleCounters = accounts.filter((account) => account.accountId !== primaryId && account.currency === selected?.currency);
 
   async function submit() {
     if (!session || !primaryId || !counterId || primaryId === counterId) {
@@ -46,7 +47,12 @@ export default function AddTransactionScreen() {
       return;
     }
     const [whole, fraction = ""] = amount.trim().split(".");
-    const amountMinor = (BigInt(whole || "0") * 100n + BigInt((fraction + "00").slice(0, 2))).toString();
+    const fractionDigits = new Set(["UGX", "RWF", "JPY", "XOF", "XAF", "BIF", "GNF", "KMF"]).has(selected?.currency ?? "KES") ? 0 : 2;
+    if (fractionDigits === 0 && fraction.length > 0 && Number(fraction) !== 0) {
+      setError("This currency does not use fractional minor units.");
+      return;
+    }
+    const amountMinor = (BigInt(whole || "0") * (10n ** BigInt(fractionDigits)) + BigInt(fractionDigits ? (fraction + "0".repeat(fractionDigits)).slice(0, fractionDigits) : "0")).toString();
     setBusy(true); setError("");
     try {
       await api.createTransaction(session, {
@@ -80,9 +86,9 @@ export default function AddTransactionScreen() {
       <Label>Primary account</Label>
       <View style={{ gap: 7 }}>{accounts.map((account) => <Pressable key={account.accountId} onPress={() => { setPrimaryId(account.accountId); if (counterId === account.accountId) setCounterId(accounts.find((item) => item.accountId !== account.accountId)?.accountId ?? ""); }} style={{ borderRadius: 11, padding: 12, borderWidth: 1, borderColor: primaryId === account.accountId ? colors.teal : colors.line, backgroundColor: primaryId === account.accountId ? "#E9F7F4" : colors.white }}><Text style={{ color: colors.ink, fontWeight: "700" }}>{account.name} · {account.currency}</Text></Pressable>)}</View>
       <Label>Counter account</Label>
-      <View style={{ gap: 7 }}>{accounts.filter((account) => account.accountId !== primaryId).map((account) => <Pressable key={account.accountId} onPress={() => setCounterId(account.accountId)} style={{ borderRadius: 11, padding: 12, borderWidth: 1, borderColor: counterId === account.accountId ? colors.teal : colors.line, backgroundColor: counterId === account.accountId ? "#E9F7F4" : colors.white }}><Text style={{ color: colors.ink, fontWeight: "700" }}>{account.name} · {account.currency}</Text></Pressable>)}</View>
+      <View style={{ gap: 7 }}>{compatibleCounters.map((account) => <Pressable key={account.accountId} onPress={() => setCounterId(account.accountId)} style={{ borderRadius: 11, padding: 12, borderWidth: 1, borderColor: counterId === account.accountId ? colors.teal : colors.line, backgroundColor: counterId === account.accountId ? "#E9F7F4" : colors.white }}><Text style={{ color: colors.ink, fontWeight: "700" }}>{account.name} · {account.currency}</Text></Pressable>)}</View>
       {error ? <ErrorText>{error}</ErrorText> : null}
-      <Button title="Save transaction" onPress={() => void submit()} busy={busy} disabled={!description.trim() || !amount.trim() || accounts.length < 2} />
+      <Button title="Save transaction" onPress={() => void submit()} busy={busy} disabled={!description.trim() || !amount.trim() || compatibleCounters.length < 1} />
     </Card>
   </Screen>;
 }
