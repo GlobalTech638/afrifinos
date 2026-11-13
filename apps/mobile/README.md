@@ -26,7 +26,7 @@ Set the public environment values in `.env`:
 - `EXPO_PUBLIC_SUPABASE_URL`: Supabase project URL.
 - `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: Supabase publishable/anon key. Never use a service-role key in a mobile app.
 
-Run `npm run android`, `npm run ios`, or `npm run web` for the respective target.
+Run `npm run android`, `npm run ios`, or `npm run web` for the respective target. For iOS simulator and device builds, use macOS/Xcode or EAS Build; Android local builds require Android Studio/SDK.
 
 ## Screens
 
@@ -37,7 +37,7 @@ Run `npm run android`, `npm run ios`, or `npm run web` for the respective target
 - Financial intelligence, forecast, signals and recurring commitments
 - Profile and session security
 
-The app uses the existing authenticated API endpoints: `/accounts`, `/transactions`, and `/financial/intelligence`. Features without backend endpoints (for example budget editing and savings-goal management) are intentionally not simulated in the UI.
+Configure the API's JWT verifier to trust the same Supabase project used by the mobile app: set `JWT_ISSUER` to `https://<project-ref>.supabase.co/auth/v1`, `JWT_AUDIENCE` to `authenticated`, and `JWT_JWKS_URL` to `https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json` when using Supabase asymmetric signing keys. Confirm these values against your Supabase project's JWT settings before deployment. The mobile app sends the Supabase access token as a bearer token.\n\nThe app uses the existing authenticated API endpoints: `/accounts`, `/transactions`, and `/financial/intelligence`. Features without backend endpoints (for example budget editing and savings-goal management) are intentionally not simulated in the UI.
 
 ## Monorepo note
 
