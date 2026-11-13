@@ -32,7 +32,6 @@ jobs:
         run: |
           npx expo install --fix
           npx expo install expo-router react-native-safe-area-context react-native-screens expo-linking expo-constants expo-status-bar
-          npx expo install react-native-web react-dom
       - name: Typecheck
         run: npm run typecheck
       - name: Export Android bundle
