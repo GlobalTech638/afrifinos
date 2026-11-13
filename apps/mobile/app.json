@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "AfriFinos",
+    "slug": "afrifinos",
+    "scheme": "afrifinos",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": { "typedRoutes": true },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.globalink.afrifinos"
+    },
+    "android": {
+      "package": "com.globalink.afrifinos",
+      "edgeToEdgeEnabled": true
+    },
+    "web": { "bundler": "metro" }
+  }
+}
