@@ -161,9 +161,16 @@ describe("buildFinancialSummary", () => {
       total: { amountMinor: 90000n, currency: "KES" },
       provenance: { sourceKind: "manual", importedAt: "2026-09-04T08:00:00Z" },
     };
-    const summary = buildFinancialSummary({ accounts, entries: [], transactions: [...transactions, pendingExpense], currency: "KES" });
-    expect(summary.cashFlow.expenseMinor).toBe(25000n);
-    expect(summary.resilience.emergencyRunwayMonths).toBe(0);
+    const baseline = buildFinancialSummary({ accounts, entries, transactions, currency: "KES" });
+    const withPending = buildFinancialSummary({
+      accounts,
+      entries,
+      transactions: [...transactions, pendingExpense],
+      currency: "KES",
+    });
+    expect(withPending.cashFlow.expenseMinor).toBe(baseline.cashFlow.expenseMinor);
+    expect(withPending.resilience.emergencyRunwayMonths).toBe(baseline.resilience.emergencyRunwayMonths);
+    expect(withPending.resilience.spendingVolatility).toBe(baseline.resilience.spendingVolatility);
   });
 
 });
