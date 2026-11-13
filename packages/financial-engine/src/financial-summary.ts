@@ -46,9 +46,10 @@ export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSu
     return total + balance.balanceMinor;
   }, 0n);
 
-  const incomeTransactionIds = new Set(input.transactions.filter((transaction) => transaction.type === "income").map((transaction) => transaction.transactionId));
-  const expenseTransactionIds = new Set(input.transactions.filter((transaction) => transaction.type === "expense" || transaction.type === "fee").map((transaction) => transaction.transactionId));
-  const refundTransactionIds = new Set(input.transactions.filter((transaction) => transaction.type === "refund").map((transaction) => transaction.transactionId));
+  const postedTransactions = input.transactions.filter((transaction) => transaction.status === "posted" || transaction.status === "enriched" || transaction.status === "reconciled");
+  const incomeTransactionIds = new Set(postedTransactions.filter((transaction) => transaction.type === "income").map((transaction) => transaction.transactionId));
+  const expenseTransactionIds = new Set(postedTransactions.filter((transaction) => transaction.type === "expense" || transaction.type === "fee").map((transaction) => transaction.transactionId));
+  const refundTransactionIds = new Set(postedTransactions.filter((transaction) => transaction.type === "refund").map((transaction) => transaction.transactionId));
   const cashFlow = calculateCashFlow(input.entries, incomeTransactionIds, expenseTransactionIds, input.currency, refundTransactionIds);
   const savings = calculateSavingsMetrics(cashFlow.incomeMinor, cashFlow.expenseMinor);
 
@@ -69,8 +70,8 @@ export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSu
   const liabilities = [...(input.liabilities ?? [])].map((liability) => { assertCurrency(liability.outstanding, input.currency); return liability.outstanding; });
   const netWorth = calculateNetWorth(assets, liabilities, input.currency);
 
-  const spendingVolatility = calculateSpendingVolatility(input.transactions, input.currency);
-  const averageMonthlyExpenseMinor = calculateAverageMonthlyExpense(input.transactions, input.currency);
+  const spendingVolatility = calculateSpendingVolatility(postedTransactions, input.currency);
+  const averageMonthlyExpenseMinor = calculateAverageMonthlyExpense(postedTransactions, input.currency);
   const emergencyRunway = calculateEmergencyRunway(liquidBalanceMinor, averageMonthlyExpenseMinor);
   const goalProgress = calculateGoalProgress(input.goals ?? []);
   const resilience = { emergencyRunwayMonths: emergencyRunway.months, spendingVolatility: spendingVolatility.normalizedVolatility, goalProgress: goalProgress.weightedProgress };
@@ -99,7 +100,8 @@ function calculateAverageMonthlyExpense(transactions: readonly Transaction[], cu
     total += transaction.type === "refund" ? -absolute(transaction.total.amountMinor) : absolute(transaction.total.amountMinor);
   }
   if (firstMonth === undefined || lastMonth === undefined) return 0n;
-  return total / BigInt(lastMonth - firstMonth + 1);
+  const netExpense = total > 0n ? total : 0n;
+  return netExpense / BigInt(lastMonth - firstMonth + 1);
 }
 
 function absolute(value: bigint): bigint {
