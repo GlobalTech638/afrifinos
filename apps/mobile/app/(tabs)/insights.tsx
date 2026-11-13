@@ -22,15 +22,15 @@ export default function InsightsScreen() {
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   return <Screen>
-    <Heading eyebrow="Financial intelligence" title="Insights" subtitle="Understand your financial health and what may happen next." />
-    <Link href="/(tabs)/planner" asChild><Text style={{ color: colors.white, backgroundColor: colors.navy, paddingVertical: 13, paddingHorizontal: 16, borderRadius: 12, overflow: "hidden", fontWeight: "800", textAlign: "center" }}>Check purchase affordability →</Text></Link>
+    <Heading eyebrow="Financial intelligence" title="Your insights" subtitle="See the patterns behind your money and plan your next move." />
+    <Link href="/(tabs)/planner" asChild><Text style={{ color: colors.white, backgroundColor: colors.blue, paddingVertical: 13, paddingHorizontal: 16, borderRadius: 12, overflow: "hidden", fontWeight: "800", textAlign: "center" }}>Check purchase affordability →</Text></Link>
     {error ? <Card><Text style={{ color: colors.danger }}>{error}</Text><Button title="Retry" onPress={() => void load()} secondary /></Card> : null}
     {loading ? <Empty title="Preparing insights…" detail="Analyzing your recorded financial activity." /> : data ? <>
-      <Card style={{ backgroundColor: colors.navy, borderColor: colors.navy }}>
-        <Text style={{ color: "#C8D7EA", fontSize: 11, fontWeight: "800" }}>FINANCIAL HEALTH SCORE</Text>
-        <Text style={{ color: colors.white, fontSize: 42, fontWeight: "900" }}>{data.summary.healthScore.score}<Text style={{ fontSize: 16, color: "#C8D7EA" }}>/100</Text></Text>
+      <Card style={{ backgroundColor: colors.lavender, borderColor: colors.lavender }}>
+        <Text style={{ color: colors.blue, fontSize: 11, fontWeight: "800" }}>FINANCIAL HEALTH SCORE</Text>
+        <Text style={{ color: colors.ink, fontSize: 42, fontWeight: "900" }}>{data.summary.healthScore.score}<Text style={{ fontSize: 16, color: colors.blue }}>/100</Text></Text>
         <Text style={{ color: "#C8D7EA", fontSize: 12 }}>{data.summary.healthScore.band.toUpperCase()}</Text>
-        <View style={{ height: 7, backgroundColor: "#294563", borderRadius: 9, marginTop: 8 }}><View style={{ height: 7, width: `${Math.max(0, Math.min(100, data.summary.healthScore.score))}%`, backgroundColor: colors.teal, borderRadius: 9 }} /></View>
+        <View style={{ height: 7, backgroundColor: colors.lavenderStrong, borderRadius: 9, marginTop: 8 }}><View style={{ height: 7, width: `${Math.max(0, Math.min(100, data.summary.healthScore.score))}%`, backgroundColor: colors.blue, borderRadius: 9 }} /></View>
       </Card>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <View style={{ flex: 1 }}><Stat label="Savings rate" value={data.summary.savings.savingsRate == null ? "—" : `${(data.summary.savings.savingsRate * 100).toFixed(1)}%`} /></View>
