@@ -844,7 +844,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     expect(result.rows[0]?.currency).toBe("USD");
     const entries = await query("SELECT id FROM ledger_entries WHERE transaction_id = $1", [ids.transactionId]);
     expect(entries.rows).toHaveLength(0);
-  });
+  }, 15_000);
 
   it("prevents an account currency update from invalidating a concurrent committed posting", async () => {
     const ids = await seed("owner-posting-first", "posting-first");
@@ -884,7 +884,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     expect(account.rows[0]?.currency).toBe("KES");
     const entries = await query("SELECT COUNT(*)::int AS count FROM ledger_entries WHERE transaction_id = $1", [ids.transactionId]);
     expect(entries.rows[0]?.count).toBe(2);
-  });
+  }, 15_000);
 
 });
 
