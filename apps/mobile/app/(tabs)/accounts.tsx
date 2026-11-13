@@ -1,12 +1,13 @@
 import { useCallback, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { api, type Account } from "../../lib/api";
 import { Button, Card, Empty, ErrorText, Field, Heading, Label, Screen } from "../../components/ui";
 import { colors } from "../../lib/theme";
 import { useAuth } from "../../providers/auth-provider";
 
 const types: Account["type"][] = ["mobile_money", "bank", "cash", "sacco", "investment", "loan", "other"];
+const icons: Record<Account["type"], string> = { mobile_money: "◉", bank: "▣", cash: "＄", sacco: "⌂", investment: "↗", loan: "↘", other: "◇" };
 
 export default function AccountsScreen() {
   const { session } = useAuth();
@@ -30,20 +31,27 @@ export default function AccountsScreen() {
   }
 
   return <Screen>
-    <Heading eyebrow="Your financial network" title="Accounts" subtitle="Represent your cash, bank, mobile money, SACCO and investment accounts." />
+    <Heading eyebrow="YOUR FINANCIAL NETWORK" title="Accounts" subtitle="All the places where you keep, grow or owe money." />
+    <Card style={{ backgroundColor: colors.navy, borderColor: colors.navy }}>
+      <Text style={{ color: "#D7D5FF", fontSize: 10, fontWeight: "900", letterSpacing: 1 }}>CONNECTED ACCOUNTS</Text>
+      <Text style={{ color: colors.white, fontSize: 32, fontWeight: "900" }}>{items.length}</Text>
+      <Text style={{ color: "#D7D5FF", fontSize: 11 }}>Bank · M-Pesa · Cash · SACCO · Investments</Text>
+    </Card>
     {items.length === 0 ? <Empty title="Start with your accounts" detail="Add the accounts you use every day. AfriFinos needs at least two accounts to represent double-entry transactions." /> :
-      items.map((account) => <Card key={account.accountId}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <View style={{ flex: 1, gap: 4 }}><Text style={{ color: colors.ink, fontWeight: "800", fontSize: 15 }}>{account.name}</Text><Text style={{ color: colors.muted, fontSize: 11 }}>{account.type.replace("_", " ")} · {account.currency}</Text></View>
-          <Text style={{ color: colors.success, fontWeight: "800", fontSize: 11 }}>{account.status}</Text>
-        </View>
-      </Card>)}
+      <Card>
+        <Heading title="My accounts" subtitle="Your connected financial accounts." />
+        {items.map((account, index) => <View key={account.accountId} style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.line }}>
+          <View style={{ width: 44, height: 44, borderRadius: 15, backgroundColor: index % 2 === 0 ? colors.lavender : colors.mint, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.blue, fontSize: 20, fontWeight: "900" }}>{icons[account.type]}</Text></View>
+          <View style={{ flex: 1, gap: 4 }}><Text style={{ color: colors.ink, fontWeight: "900", fontSize: 13 }}>{account.name}</Text><Text style={{ color: colors.muted, fontSize: 10 }}>{account.type.replace("_", " ")} · {account.currency}</Text></View>
+          <Text style={{ color: colors.success, fontWeight: "900", fontSize: 10 }}>{account.status}</Text>
+        </View>)}
+      </Card>}
     <Card>
-      <Heading title="Add an account" subtitle="Create a new place where you hold or owe money." />
+      <Heading title="Add an account" subtitle="Create a place where you hold or owe money." />
       <Label>Account name</Label><Field value={name} onChangeText={setName} placeholder="e.g. M-Pesa wallet" />
       <Label>Account type</Label>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7 }}>
-        {types.map((value) => <Text key={value} onPress={() => setType(value)} style={{ overflow: "hidden", borderRadius: 10, paddingVertical: 9, paddingHorizontal: 11, backgroundColor: type === value ? colors.navy : colors.canvas, color: type === value ? colors.white : colors.ink, fontSize: 11, fontWeight: "700" }}>{value.replace("_", " ")}</Text>)}
+        {types.map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: type === value }} onPress={() => setType(value)} style={{ borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, backgroundColor: type === value ? colors.blue : colors.canvas, borderWidth: 1, borderColor: type === value ? colors.blue : colors.line }}><Text style={{ color: type === value ? colors.white : colors.ink, fontSize: 11, fontWeight: "800" }}>{value.replace("_", " ")}</Text></Pressable>)}
       </View>
       <Label>Currency code</Label><Field value={currency} onChangeText={setCurrency} autoCapitalize="characters" maxLength={3} placeholder="KES" />
       {error ? <ErrorText>{error}</ErrorText> : null}
