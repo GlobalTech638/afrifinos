@@ -33,8 +33,8 @@ export default function SignInScreen() {
   return <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.canvas }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
     <Screen>
       <View style={{ paddingTop: 42, paddingBottom: 18, gap: 12 }}>
-        <Text style={{ color: colors.navy, fontSize: 13, fontWeight: "900", letterSpacing: 2 }}>AFRIFINOS</Text>
-        <Text style={{ color: colors.ink, fontSize: 34, fontWeight: "900", lineHeight: 40 }}>Your money.{ "\n" }Your control.</Text>
+        <Text style={{ color: colors.blue, fontSize: 13, fontWeight: "900", letterSpacing: 2 }}>AFRIFINOS</Text>
+        <Text style={{ color: colors.ink, fontSize: 34, fontWeight: "900", lineHeight: 40, letterSpacing: -0.8 }}>Your money.{ "\n" }Your control.</Text>
         <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 21 }}>A clearer view of your cash, spending, savings and financial future.</Text>
       </View>
       <Card>
