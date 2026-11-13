@@ -46,9 +46,11 @@ export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSu
     return total + balance.balanceMinor;
   }, 0n);
 
-  const incomeTransactionIds = new Set(input.transactions.filter((transaction) => transaction.type === "income").map((transaction) => transaction.transactionId));
-  const expenseTransactionIds = new Set(input.transactions.filter((transaction) => transaction.type === "expense" || transaction.type === "fee").map((transaction) => transaction.transactionId));
-  const cashFlow = calculateCashFlow(input.entries, incomeTransactionIds, expenseTransactionIds);
+  const postedTransactions = input.transactions.filter((transaction) => transaction.status === "posted" || transaction.status === "enriched" || transaction.status === "reconciled");
+  const incomeTransactionIds = new Set(postedTransactions.filter((transaction) => transaction.type === "income").map((transaction) => transaction.transactionId));
+  const expenseTransactionIds = new Set(postedTransactions.filter((transaction) => transaction.type === "expense" || transaction.type === "fee").map((transaction) => transaction.transactionId));
+  const refundTransactionIds = new Set(postedTransactions.filter((transaction) => transaction.type === "refund").map((transaction) => transaction.transactionId));
+  const cashFlow = calculateCashFlow(input.entries, incomeTransactionIds, expenseTransactionIds, input.currency, refundTransactionIds);
   const savings = calculateSavingsMetrics(cashFlow.incomeMinor, cashFlow.expenseMinor);
 
   const debtServiceMinor = input.debtServiceMinor ?? calculateMonthlyDebtService(
@@ -68,8 +70,8 @@ export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSu
   const liabilities = [...(input.liabilities ?? [])].map((liability) => { assertCurrency(liability.outstanding, input.currency); return liability.outstanding; });
   const netWorth = calculateNetWorth(assets, liabilities, input.currency);
 
-  const spendingVolatility = calculateSpendingVolatility(input.transactions, input.currency);
-  const averageMonthlyExpenseMinor = calculateAverageMonthlyExpense(input.transactions, input.currency);
+  const spendingVolatility = calculateSpendingVolatility(postedTransactions, input.currency);
+  const averageMonthlyExpenseMinor = calculateAverageMonthlyExpense(postedTransactions, input.currency);
   const emergencyRunway = calculateEmergencyRunway(liquidBalanceMinor, averageMonthlyExpenseMinor);
   const goalProgress = calculateGoalProgress(input.goals ?? []);
   const resilience = { emergencyRunwayMonths: emergencyRunway.months, spendingVolatility: spendingVolatility.normalizedVolatility, goalProgress: goalProgress.weightedProgress };
@@ -85,16 +87,21 @@ export function buildFinancialSummary(input: FinancialSummaryInput): FinancialSu
 }
 
 function calculateAverageMonthlyExpense(transactions: readonly Transaction[], currency: Money["currency"]): bigint {
-  const periods = new Set<string>();
+  let firstMonth: number | undefined;
+  let lastMonth: number | undefined;
   let total = 0n;
   for (const transaction of transactions) {
-    if (transaction.currency !== currency || (transaction.type !== "expense" && transaction.type !== "fee")) continue;
+    if (transaction.total.currency !== currency || (transaction.type !== "expense" && transaction.type !== "fee" && transaction.type !== "refund")) continue;
     const date = new Date(transaction.occurredAt);
     if (Number.isNaN(date.getTime())) continue;
-    periods.add(date.toISOString().slice(0, 7));
-    total += absolute(transaction.total.amountMinor);
+    const month = date.getUTCFullYear() * 12 + date.getUTCMonth();
+    firstMonth = firstMonth === undefined ? month : Math.min(firstMonth, month);
+    lastMonth = lastMonth === undefined ? month : Math.max(lastMonth, month);
+    total += transaction.type === "refund" ? -absolute(transaction.total.amountMinor) : absolute(transaction.total.amountMinor);
   }
-  return periods.size > 0 ? total / BigInt(periods.size) : 0n;
+  if (firstMonth === undefined || lastMonth === undefined) return 0n;
+  const netExpense = total > 0n ? total : 0n;
+  return netExpense / BigInt(lastMonth - firstMonth + 1);
 }
 
 function absolute(value: bigint): bigint {

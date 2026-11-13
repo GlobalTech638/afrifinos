@@ -14,6 +14,22 @@ describe("transaction normalization", () => {
     expect(result.amountMinor).toBe(125050n);
   });
 
+  it("rejects unsafe numeric amounts instead of silently losing minor units", () => {
+    expect(() => normalizeTransaction({
+      occurredAt: "2026-09-10T08:30:00Z",
+      description: "Payment",
+      amountMinor: Number.MAX_SAFE_INTEGER + 1,
+      currency: "KES",
+    })).toThrow("Transaction amount must be a safe integer when provided as a number");
+  });
+
+  it("rejects invalid dates, zero amounts, and unsupported currencies", () => {
+    const base = { occurredAt: "2026-09-10T08:30:00Z", description: "Payment", amountMinor: 100n, currency: "KES" as const };
+    expect(() => normalizeTransaction({ ...base, occurredAt: "not-a-date" })).toThrow("Transaction date must be valid");
+    expect(() => normalizeTransaction({ ...base, amountMinor: 0n })).toThrow("Transaction amount cannot be zero");
+    expect(() => normalizeTransaction({ ...base, currency: "ZZZ" as "KES" })).toThrow("Transaction currency is not supported");
+  });
+
   it("detects common transaction types", () => {
     expect(inferTransactionType("Monthly salary", 100000)).toBe("income");
     expect(inferTransactionType("Safaricom transfer", 5000)).toBe("transfer");

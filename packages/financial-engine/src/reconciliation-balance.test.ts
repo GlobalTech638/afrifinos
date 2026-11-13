@@ -1,0 +1,146 @@
+import { describe, expect, it } from "vitest";
+import { currencyCode, type LedgerEntry } from "@afrifinos/financial-domain";
+import { reconcileAccountBalance } from "./reconciliation.js";
+
+const kes = currencyCode("KES");
+const usd = currencyCode("USD");
+
+function entry(overrides: Partial<LedgerEntry> = {}): LedgerEntry {
+  return {
+    entryId: "entry-1",
+    transactionId: "txn-1",
+    accountId: "account-1",
+    currency: kes,
+    amountMinor: 5000n,
+    direction: "credit",
+    postedAt: "2026-10-01T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function observation(overrides: Partial<Parameters<typeof reconcileAccountBalance>[2]> = {}) {
+  return {
+    accountId: "account-1",
+    currency: kes,
+    observedBalanceMinor: 5000n,
+    observedAt: "2026-10-01T10:01:00.000Z",
+    providerId: "mpesa",
+    ...overrides,
+  };
+}
+
+describe("reconcileAccountBalance", () => {
+  it("reports a matched balance when the ledger and provider observation agree", () => {
+    const result = reconcileAccountBalance("account-1", [entry()], observation());
+    expect(result.ledgerBalanceMinor).toBe(5000n);
+    expect(result.observedBalanceMinor).toBe(5000n);
+    expect(result.differenceMinor).toBe(0n);
+    expect(result.status).toBe("matched");
+    expect(result.observedAt).toBe("2026-10-01T10:01:00.000Z");
+    expect(result.providerId).toBe("mpesa");
+  });
+
+  it("generates the same observation key for the same snapshot", () => {
+    const first = reconcileAccountBalance("account-1", [entry()], observation());
+    const second = reconcileAccountBalance("account-1", [entry()], observation());
+    expect(first.observationKey).toBe(second.observationKey);
+  });
+
+  it("uses a provider observation ID as an account-scoped idempotency key", () => {
+    const first = reconcileAccountBalance("account-1", [entry()], observation({
+      externalObservationId: "snapshot-42",
+    }));
+    const replay = reconcileAccountBalance("account-1", [entry()], observation({
+      externalObservationId: "snapshot-42",
+      observedBalanceMinor: 5100n,
+    }));
+    expect(first.observationKey).toBe(replay.observationKey);
+    expect(first.observationKey).not.toBe(reconcileAccountBalance(
+      "account-2",
+      [entry({ accountId: "account-2" })],
+      observation({ accountId: "account-2", externalObservationId: "snapshot-42" }),
+    ).observationKey);
+  });
+
+  it("rejects an external observation ID without a provider namespace", () => {
+    expect(() => reconcileAccountBalance("account-1", [entry()], observation({
+      providerId: " ",
+      externalObservationId: "snapshot-42",
+    }))).toThrow("External observation ID requires a provider ID");
+  });
+
+  it("reports the signed difference when balances disagree", () => {
+    const result = reconcileAccountBalance("account-1", [entry()], observation({ observedBalanceMinor: 4700n }));
+    expect(result.differenceMinor).toBe(-300n);
+    expect(result.status).toBe("difference");
+  });
+
+  it("reports a positive difference when the provider reports more than the ledger", () => {
+    const result = reconcileAccountBalance("account-1", [entry()], observation({ observedBalanceMinor: 5300n }));
+    expect(result.differenceMinor).toBe(300n);
+    expect(result.status).toBe("difference");
+  });
+
+  it("treats an account with no ledger entries as a zero ledger balance", () => {
+    const result = reconcileAccountBalance("account-1", [], observation({ observedBalanceMinor: 1250n }));
+    expect(result.ledgerBalanceMinor).toBe(0n);
+    expect(result.differenceMinor).toBe(1250n);
+    expect(result.status).toBe("difference");
+  });
+
+  it("only sums entries for the account being reconciled", () => {
+    const result = reconcileAccountBalance("account-1", [
+      entry(),
+      entry({ entryId: "entry-2", accountId: "account-2", amountMinor: 9000n }),
+    ], observation());
+    expect(result.ledgerBalanceMinor).toBe(5000n);
+    expect(result.status).toBe("matched");
+  });
+
+  it("rejects a blank account ID", () => {
+    expect(() => reconcileAccountBalance(" ", [entry()], observation({ accountId: " " })))
+      .toThrow("Account ID cannot be empty");
+  });
+
+  it("rejects an invalid provider observation timestamp", () => {
+    expect(() => reconcileAccountBalance("account-1", [entry()], observation({ observedAt: "not-a-date" })))
+      .toThrow("Observation timestamp must be an ISO 8601 date-time");
+  });
+
+  it("rejects a date-only observation timestamp", () => {
+    expect(() => reconcileAccountBalance("account-1", [entry()], observation({ observedAt: "2026-10-01" })))
+      .toThrow("Observation timestamp must be an ISO 8601 date-time");
+  });
+
+  it("rejects an impossible calendar date in an observation timestamp", () => {
+    expect(() => reconcileAccountBalance("account-1", [entry()], observation({ observedAt: "2026-02-30T10:00:00.000Z" })))
+      .toThrow("Observation timestamp must be an ISO 8601 date-time");
+  });
+
+  it("accepts a valid timestamp whose timezone offset crosses a UTC date boundary", () => {
+    const result = reconcileAccountBalance(
+      "account-1",
+      [entry()],
+      observation({ observedAt: "2026-10-01T00:30:00+03:00" }),
+    );
+    expect(result.observedAt).toBe("2026-10-01T00:30:00+03:00");
+  });
+
+  it("rejects an observation for a different account", () => {
+    expect(() => reconcileAccountBalance("account-1", [entry()], observation({ accountId: "account-2" })))
+      .toThrow("does not match");
+  });
+
+  it("rejects a currency mismatch on the reconciled account", () => {
+    expect(() => reconcileAccountBalance("account-1", [entry({ currency: usd })], observation()))
+      .toThrow("Currency mismatch");
+  });
+
+  it("does not let another account's currency affect this account's reconciliation", () => {
+    const result = reconcileAccountBalance("account-1", [
+      entry(),
+      entry({ entryId: "entry-2", accountId: "account-2", currency: usd }),
+    ], observation());
+    expect(result.status).toBe("matched");
+  });
+});

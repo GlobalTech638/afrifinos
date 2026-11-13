@@ -1,10 +1,11 @@
-import { BadRequestException, Body, Controller, Get, Inject, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Inject, InternalServerErrorException, Post, Query, HttpException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
+import { currencyCode, getCurrencyDefinition } from "@afrifinos/financial-domain";
 import type { RawTransaction } from "@afrifinos/financial-engine";
 import type { FinancialRepository, TransactionWriteRepository } from "@afrifinos/financial-persistence";
 import { FINANCIAL_REPOSITORY } from "./app.module.js";
 import { OwnerId } from "./auth-context.js";
-import { ingestTransaction } from "@afrifinos/financial-application";
+import { ingestTransaction, TransactionInputError } from "@afrifinos/financial-application";
 
 interface CreateTransactionBody {
   readonly primaryAccountId: string;
@@ -30,6 +31,7 @@ const SOURCE_KINDS = new Set<NonNullable<CreateTransactionBody["sourceKind"]>>([
 function parseAmountMinor(value: string | number): bigint {
   try {
     if (typeof value === "number" && !Number.isSafeInteger(value)) throw new Error("unsafe number");
+    if (typeof value !== "number" && (typeof value !== "string" || !/^-?\d+$/.test(value.trim()))) throw new Error("invalid integer");
     const parsed = BigInt(value);
     if (parsed === 0n) throw new Error("zero amount");
     return parsed;
@@ -58,11 +60,20 @@ export class TransactionsController {
 
   @Post()
   async create(@OwnerId() ownerId: string, @Body() body: CreateTransactionBody) {
-    if (!body.primaryAccountId?.trim() || !body.counterAccountId?.trim()) {
+    if (!body || typeof body.primaryAccountId !== "string" || typeof body.counterAccountId !== "string" || !body.primaryAccountId.trim() || !body.counterAccountId.trim()) {
       throw new BadRequestException("primaryAccountId and counterAccountId are required");
     }
-    if (!body.description?.trim()) throw new BadRequestException("description is required");
-    if (!/^[A-Z]{3}$/i.test(body.currency ?? "")) throw new BadRequestException("currency must be a 3-letter ISO-style code");
+    if (typeof body.description !== "string" || !body.description.trim()) throw new BadRequestException("description is required");
+    if (body.counterparty !== undefined && typeof body.counterparty !== "string") throw new BadRequestException("counterparty must be a string");
+    if (body.externalId !== undefined && typeof body.externalId !== "string") throw new BadRequestException("externalId must be a string");
+    if (body.providerId !== undefined && typeof body.providerId !== "string") throw new BadRequestException("providerId must be a string");
+    let parsedCurrency: RawTransaction["currency"];
+    try {
+      parsedCurrency = currencyCode(body.currency ?? "");
+      getCurrencyDefinition(parsedCurrency);
+    } catch {
+      throw new BadRequestException("currency is not supported");
+    }
     if (body.type !== undefined && !TRANSACTION_TYPES.has(body.type)) throw new BadRequestException("type is invalid");
     if (body.sourceKind !== undefined && !SOURCE_KINDS.has(body.sourceKind)) throw new BadRequestException("sourceKind is invalid");
     if (body.providerId !== undefined && !body.providerId.trim()) throw new BadRequestException("providerId cannot be empty");
@@ -73,10 +84,10 @@ export class TransactionsController {
       occurredAt: validateOccurredAt(body.occurredAt),
       description: body.description.trim(),
       amountMinor: parseAmountMinor(body.amountMinor),
-      currency: body.currency.toUpperCase() as RawTransaction["currency"],
-      type: body.type,
-      counterparty: body.counterparty?.trim() || undefined,
-      externalId: body.externalId?.trim() || undefined,
+      currency: parsedCurrency,
+      ...(body.type ? { type: body.type } : {}),
+      ...(body.counterparty?.trim() ? { counterparty: body.counterparty.trim() } : {}),
+      ...(body.externalId?.trim() ? { externalId: body.externalId.trim() } : {}),
     };
 
     try {
@@ -86,7 +97,7 @@ export class TransactionsController {
         counterAccountId: body.counterAccountId.trim(),
         input,
         sourceKind: body.sourceKind ?? "manual",
-        providerId: body.providerId?.trim(),
+        ...(body.providerId?.trim() ? { providerId: body.providerId.trim() } : {}),
         transactionId: randomUUID(),
       });
 
@@ -98,7 +109,9 @@ export class TransactionsController {
         },
       };
     } catch (error) {
-      throw new BadRequestException(error instanceof Error ? error.message : "Unable to create transaction");
+      if (error instanceof HttpException) throw error;
+      if (error instanceof TransactionInputError) throw new BadRequestException(error.message);
+      throw new InternalServerErrorException("Unable to create transaction");
     }
   }
 }

@@ -7,48 +7,68 @@ export interface DedupeResult<T extends RawTransaction> {
 }
 
 function fingerprint(transaction: RawTransaction): string {
-  return [
+  return JSON.stringify([
     transaction.occurredAt,
     transaction.description.trim().toLowerCase().replace(/\s+/g, " "),
     String(transaction.amountMinor),
     transaction.currency,
     transaction.type ?? "",
     transaction.counterparty?.trim().toLowerCase() ?? "",
-  ].join("|");
+  ]);
 }
 
 /**
- * Deduplicates exact provider events by externalId when available.
- * Rows without an externalId use a deterministic fingerprint. This is
- * intentionally conservative and should be followed by reconciliation before
- * an import is treated as authoritative financial history.
+ * Conservative duplicate handling:
+ * - Exact repeated events with the same provider-scoped external ID and payload
+ *   are duplicates.
+ * - Reused external IDs with conflicting payloads are retained and flagged.
+ * - Fingerprint-only matches are retained and flagged because legitimate
+ *   repeated payments can share all visible fields.
  */
 export function deduplicateTransactions<T extends RawTransaction>(
   transactions: readonly T[],
   providerId?: string,
 ): DedupeResult<T> {
-  const seen = new Set<string>();
+  const seenExternal = new Map<string, string>();
+  const seenFingerprints = new Set<string>();
   const unique: T[] = [];
   const duplicates: T[] = [];
   const ambiguous: T[] = [];
 
   for (const transaction of transactions) {
-    if (transaction.externalId) {
-      const key = `external:${providerId ?? "unknown"}:${transaction.externalId}`;
-      if (seen.has(key)) duplicates.push(transaction);
-      else { seen.add(key); unique.push(transaction); }
+    const eventFingerprint = fingerprint(transaction);
+
+    if (transaction.externalId && providerId?.trim()) {
+      const key = JSON.stringify([providerId.trim(), transaction.externalId]);
+      const previousFingerprint = seenExternal.get(key);
+
+      if (previousFingerprint === undefined) {
+        seenExternal.set(key, eventFingerprint);
+        unique.push(transaction);
+      } else if (previousFingerprint === eventFingerprint) {
+        duplicates.push(transaction);
+      } else {
+        // Same provider ID but different data may be an update, reversal,
+        // provider defect, or ID collision. Never discard it automatically.
+        ambiguous.push(transaction);
+        unique.push(transaction);
+      }
       continue;
     }
 
-    const key = `fingerprint:${fingerprint(transaction)}`;
-    if (seen.has(key)) {
-      // Identical fingerprinted rows may be legitimate repeated cash events.
-      // Keep them out of the authoritative duplicate bucket until reconciliation.
+    if (transaction.externalId && !providerId?.trim()) {
       ambiguous.push(transaction);
       unique.push(transaction);
       continue;
     }
-    seen.add(key);
+
+    if (seenFingerprints.has(eventFingerprint)) {
+      ambiguous.push(transaction);
+      unique.push(transaction);
+      continue;
+    }
+
+    seenFingerprints.add(eventFingerprint);
     unique.push(transaction);
   }
 

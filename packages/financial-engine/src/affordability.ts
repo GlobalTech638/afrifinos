@@ -1,4 +1,4 @@
-import type { CurrencyCode } from "@afrifinos/financial-domain";
+import { currencyCode, getCurrencyDefinition, type CurrencyCode } from "@afrifinos/financial-domain";
 import type { CashForecast } from "./forecasting.js";
 
 export type AffordabilityDecision = "affordable" | "caution" | "not_affordable";
@@ -22,30 +22,48 @@ export interface AffordabilityAnalysis {
   readonly reasons: readonly string[];
 }
 
+function parseMinorUnits(value: bigint | number | string, field: string): bigint {
+  if (typeof value === "number" && !Number.isSafeInteger(value)) {
+    throw new Error(`${field} must be a safe integer when provided as a number`);
+  }
+  try {
+    return BigInt(value);
+  } catch {
+    throw new Error(`${field} must be an integer amount in minor currency units`);
+  }
+}
+
 export function assessAffordability(input: AffordabilityInput): AffordabilityAnalysis {
-  const purchaseAmountMinor = BigInt(input.purchaseAmountMinor);
-  const additionalRecurringMonthlyMinor = BigInt(input.additionalRecurringMonthlyMinor ?? 0);
+  try {
+    getCurrencyDefinition(currencyCode(input.currency));
+  } catch {
+    throw new Error(`Unsupported affordability currency: ${input.currency}`);
+  }
+  const purchaseAmountMinor = parseMinorUnits(input.purchaseAmountMinor, "Purchase amount");
+  const additionalRecurringMonthlyMinor = parseMinorUnits(input.additionalRecurringMonthlyMinor ?? 0, "Additional recurring monthly cost");
   if (purchaseAmountMinor <= 0n) throw new Error("Purchase amount must be positive");
   if (additionalRecurringMonthlyMinor < 0n) throw new Error("Additional recurring monthly cost cannot be negative");
   if (input.forecast.currency !== input.currency) throw new Error("Affordability currency mismatch");
 
-  // Model the purchase immediately, then apply the new monthly commitment at each
-  // 30-day boundary. This keeps the affordability check aligned with the forecast
-  // horizon instead of subtracting one month's cost from every forecasted day.
-  let projectedMinimumBalanceMinor = input.forecast.startingBalanceMinor - purchaseAmountMinor;
-  let projectedEndingBalanceMinor = input.forecast.endingBalanceMinor - purchaseAmountMinor;
-  for (const point of input.forecast.points) {
-    const day = Math.round(
-      (new Date(point.date).getTime() - new Date(input.forecast.points[0]?.date ?? point.date).getTime()) / 86_400_000,
-    ) + 1;
+  const monthlyPeriods = BigInt(Math.floor(input.forecast.horizonDays / 30));
+  let projectedMinimumBalanceMinor = input.forecast.minimumProjectedBalanceMinor
+    - purchaseAmountMinor
+    - additionalRecurringMonthlyMinor;
+  let projectedEndingBalanceMinor = input.forecast.endingBalanceMinor
+    - purchaseAmountMinor
+    - additionalRecurringMonthlyMinor * monthlyPeriods;
+
+  const firstPointDate = input.forecast.points[0]?.date;
+  for (let index = 0; index < input.forecast.points.length; index += 1) {
+    const point = input.forecast.points[index];
+    if (!point) continue;
+    const day = firstPointDate
+      ? Math.round((new Date(point.date).getTime() - new Date(firstPointDate).getTime()) / 86_400_000) + 1
+      : index + 1;
     const recurringCharges = BigInt(Math.floor(day / 30)) * additionalRecurringMonthlyMinor;
     const adjustedBalance = point.projectedBalanceMinor - purchaseAmountMinor - recurringCharges;
-    projectedMinimumBalanceMinor = adjustedBalance < projectedMinimumBalanceMinor
-      ? adjustedBalance
-      : projectedMinimumBalanceMinor;
-    if (point === input.forecast.points[input.forecast.points.length - 1]) {
-      projectedEndingBalanceMinor = adjustedBalance;
-    }
+    if (adjustedBalance < projectedMinimumBalanceMinor) projectedMinimumBalanceMinor = adjustedBalance;
+    if (index === input.forecast.points.length - 1) projectedEndingBalanceMinor = adjustedBalance;
   }
 
   const safetyBufferMinor = input.forecast.liquidityRisk.safetyBufferMinor;
@@ -62,7 +80,7 @@ export function assessAffordability(input: AffordabilityInput): AffordabilityAna
     reasons.push("The purchase remains above the configured safety buffer across the forecast horizon.");
   }
   if (additionalRecurringMonthlyMinor > 0n) {
-    reasons.push("The analysis applies the stated additional cost at monthly intervals across the forecast horizon.");
+    reasons.push("The analysis applies the stated additional monthly commitment across the forecast horizon.");
   }
 
   const decision: AffordabilityDecision = projectedMinimumBalanceMinor <= 0n

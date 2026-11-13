@@ -13,13 +13,44 @@ class InMemoryWriteRepository implements TransactionWriteRepository {
     }
   }
 
-  async saveTransactionWithLedger(transaction: Transaction, entries: readonly LedgerEntry[]): Promise<void> {
+  async getTransactionByProviderExternalId(): Promise<Transaction | null> {
+    return null;
+  }
+
+  async assertAccountsCurrency(ownerId: string, accountIds: readonly string[], currency: string): Promise<void> {
+    if (ownerId !== "user-1" || currency !== "KES" || accountIds.some((accountId) => !["mpesa", "income"].includes(accountId))) {
+      throw new Error("Transaction currency must match both account currencies");
+    }
+  }
+
+  async saveTransactionWithLedger(transaction: Transaction, entries: readonly LedgerEntry[]): Promise<"inserted"> {
     this.transactions.push(transaction);
     this.entries.push(...entries);
+    return "inserted";
   }
 }
 
 describe("ingestTransactionBatch", () => {
+  it("propagates unexpected persistence failures instead of reporting them as rejected rows", async () => {
+    const repository = new InMemoryWriteRepository();
+    repository.saveTransactionWithLedger = async () => {
+      throw new Error("database unavailable");
+    };
+    await expect(ingestTransactionBatch(repository, {
+      ownerId: "user-1",
+      primaryAccountId: "mpesa",
+      counterAccountId: "income",
+      inputs: [{
+        occurredAt: "2026-09-01T08:00:00Z",
+        description: "Salary",
+        amountMinor: "100000",
+        currency: "KES",
+      }],
+      sourceKind: "csv",
+      transactionIdFor: () => "tx-failure",
+    })).rejects.toThrow("database unavailable");
+  });
+
   it("persists unique transactions and reports duplicates", async () => {
     const repository = new InMemoryWriteRepository();
     const inputs = [

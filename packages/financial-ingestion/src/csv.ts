@@ -69,7 +69,9 @@ function parseAmountMinor(value: string, row: number): bigint {
     throw new Error(`amount_minor must be an integer, received '${value}'`);
   }
   try {
-    return BigInt(normalized);
+    const amount = BigInt(normalized);
+    if (amount === 0n) throw new Error("amount_minor cannot be zero");
+    return amount;
   } catch {
     throw new Error(`Invalid amount_minor at row ${row}`);
   }
@@ -104,8 +106,13 @@ export function parseTransactionCsv(input: string): CsvParseResult {
   const records = parseCsvRecords(input);
   if (records.length === 0) return { rows: [], errors: [] };
 
-  const headers = records[0].map((header) => header.trim().toLowerCase());
+  const firstRecord = records[0];
+  if (!firstRecord) return { rows: [], errors: [] };
+  const headers = firstRecord.map((header) => header.trim().toLowerCase());
   const headerSet = new Set(headers);
+  if (headerSet.size !== headers.length) {
+    return { rows: [], errors: [{ row: 1, message: "Duplicate CSV column names are not allowed" }] };
+  }
   const missing = REQUIRED_COLUMNS.filter((column) => !headerSet.has(column));
   if (missing.length > 0) {
     return { rows: [], errors: [{ row: 1, message: `Missing required columns: ${missing.join(", ")}` }] };
@@ -118,19 +125,24 @@ export function parseTransactionCsv(input: string): CsvParseResult {
   for (let index = 1; index < records.length; index += 1) {
     const rowNumber = index + 1;
     const record = records[index];
+    if (!record) {
+      errors.push({ row: rowNumber, message: "Missing CSV record" });
+      continue;
+    }
     try {
+      if (record.length > headers.length) throw new Error("CSV row contains more fields than the header");
       const value = (column: string): string => record[indexes.get(column) ?? -1] ?? "";
       const description = value("description").trim();
       if (!description) throw new Error("description cannot be empty");
 
       rows.push({
-        externalId: value("external_id").trim() || undefined,
+        ...(value("external_id").trim() ? { externalId: value("external_id").trim() } : {}),
         occurredAt: parseOccurredAt(value("occurred_at"), rowNumber),
         description,
         amountMinor: parseAmountMinor(value("amount_minor"), rowNumber),
         currency: parseCurrency(value("currency"), rowNumber),
-        type: parseType(indexes.has("type") ? value("type") : undefined, rowNumber),
-        counterparty: value("counterparty").trim() || undefined,
+        ...(parseType(indexes.has("type") ? value("type") : undefined, rowNumber) ? { type: parseType(indexes.has("type") ? value("type") : undefined, rowNumber)! } : {}),
+        ...(value("counterparty").trim() ? { counterparty: value("counterparty").trim() } : {}),
       });
     } catch (error) {
       errors.push({ row: rowNumber, message: error instanceof Error ? error.message : "Invalid row" });

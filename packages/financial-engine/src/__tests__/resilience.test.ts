@@ -38,6 +38,14 @@ describe("resilience metrics", () => {
     ], "KES").normalizedVolatility).toBeNull();
   });
 
+  it("weights aggregate goal progress by target value rather than goal count", () => {
+    const result = calculateGoalProgress([
+      { current: { amountMinor: 10_000n }, target: { amountMinor: 10_000n }, status: "active" },
+      { current: { amountMinor: 0n }, target: { amountMinor: 90_000n }, status: "active" },
+    ]);
+    expect(result.weightedProgress).toBe(0.1);
+  });
+
   it("calculates average progress across active and completed goals", () => {
     const result = calculateGoalProgress([
       { current: { amountMinor: 50_000n }, target: { amountMinor: 100_000n }, status: "active" },
@@ -47,4 +55,26 @@ describe("resilience metrics", () => {
     expect(result.activeGoals).toBe(2);
     expect(result.weightedProgress).toBe(0.75);
   });
+
+  it("includes fees, nets refunds, and includes zero-spend months in volatility", () => {
+    const fee: Transaction = {
+      ...transaction("fee", "2026-01-15T00:00:00.000Z", 20_000n),
+      type: "fee",
+    };
+    const refund: Transaction = {
+      ...transaction("refund", "2026-02-15T00:00:00.000Z", 50_000n),
+      type: "refund",
+    };
+    const result = calculateSpendingVolatility([
+      transaction("expense-jan", "2026-01-10T00:00:00.000Z", 100_000n),
+      fee,
+      refund,
+      transaction("expense-mar", "2026-03-10T00:00:00.000Z", 100_000n),
+    ], "KES");
+
+    // Net monthly expenses are 120k, 0, and 100k (February is a refund-only month).
+    expect(result.monthlyExpenseCoefficient).toBeCloseTo(Math.sqrt(62 / 121), 4);
+    expect(result.normalizedVolatility).toBeCloseTo(Math.sqrt(62 / 121), 4);
+  });
+
 });
