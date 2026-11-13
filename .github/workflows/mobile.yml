@@ -1,5 +1,9 @@
 name: Mobile app
 
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: ["feat/expo-mobile-app"]
