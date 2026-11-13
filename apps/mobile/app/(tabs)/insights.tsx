@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { Link } from "expo-router";
 import { useFocusEffect } from "expo-router";
 import { Text, View } from "react-native";
 import { api, formatMinor, type Intelligence } from "../../lib/api";
@@ -22,6 +23,7 @@ export default function InsightsScreen() {
 
   return <Screen>
     <Heading eyebrow="Financial intelligence" title="Insights" subtitle="Understand your financial health and what may happen next." />
+    <Link href="/(tabs)/planner" asChild><Text style={{ color: colors.white, backgroundColor: colors.navy, paddingVertical: 13, paddingHorizontal: 16, borderRadius: 12, overflow: "hidden", fontWeight: "800", textAlign: "center" }}>Check purchase affordability →</Text></Link>
     {error ? <Card><Text style={{ color: colors.danger }}>{error}</Text><Button title="Retry" onPress={() => void load()} secondary /></Card> : null}
     {loading ? <Empty title="Preparing insights…" detail="Analyzing your recorded financial activity." /> : data ? <>
       <Card style={{ backgroundColor: colors.navy, borderColor: colors.navy }}>
