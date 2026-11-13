@@ -38,7 +38,7 @@ export default function AddTransactionScreen() {
   const compatibleCounters = accounts.filter((account) => account.accountId !== primaryId && account.currency === selected?.currency);
 
   async function submit() {
-    if (!session || !primaryId || !counterId || primaryId === counterId) {
+    if (!session || !primaryId || !counterId || primaryId === counterId || accounts.find((account) => account.accountId === counterId)?.currency !== selected?.currency) {
       setError("Choose two different accounts.");
       return;
     }
@@ -84,7 +84,13 @@ export default function AddTransactionScreen() {
       <Label>Description</Label>
       <Field value={description} onChangeText={setDescription} placeholder="e.g. Groceries, salary, rent" />
       <Label>Primary account</Label>
-      <View style={{ gap: 7 }}>{accounts.map((account) => <Pressable key={account.accountId} onPress={() => { setPrimaryId(account.accountId); if (counterId === account.accountId) setCounterId(accounts.find((item) => item.accountId !== account.accountId)?.accountId ?? ""); }} style={{ borderRadius: 11, padding: 12, borderWidth: 1, borderColor: primaryId === account.accountId ? colors.teal : colors.line, backgroundColor: primaryId === account.accountId ? "#E9F7F4" : colors.white }}><Text style={{ color: colors.ink, fontWeight: "700" }}>{account.name} · {account.currency}</Text></Pressable>)}</View>
+      <View style={{ gap: 7 }}>{accounts.map((account) => <Pressable key={account.accountId} onPress={() => {
+        setPrimaryId(account.accountId);
+        const currentCounter = accounts.find((item) => item.accountId === counterId);
+        if (!currentCounter || currentCounter.accountId === account.accountId || currentCounter.currency !== account.currency) {
+          setCounterId(accounts.find((item) => item.accountId !== account.accountId && item.currency === account.currency)?.accountId ?? "");
+        }
+      }} style={{ borderRadius: 11, padding: 12, borderWidth: 1, borderColor: primaryId === account.accountId ? colors.teal : colors.line, backgroundColor: primaryId === account.accountId ? "#E9F7F4" : colors.white }}><Text style={{ color: colors.ink, fontWeight: "700" }}>{account.name} · {account.currency}</Text></Pressable>)}</View>
       <Label>Counter account</Label>
       <View style={{ gap: 7 }}>{compatibleCounters.map((account) => <Pressable key={account.accountId} onPress={() => setCounterId(account.accountId)} style={{ borderRadius: 11, padding: 12, borderWidth: 1, borderColor: counterId === account.accountId ? colors.teal : colors.line, backgroundColor: counterId === account.accountId ? "#E9F7F4" : colors.white }}><Text style={{ color: colors.ink, fontWeight: "700" }}>{account.name} · {account.currency}</Text></Pressable>)}</View>
       {error ? <ErrorText>{error}</ErrorText> : null}
