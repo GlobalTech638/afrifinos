@@ -808,8 +808,9 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
 
   it("serializes a ledger posting against an earlier account currency update", async () => {
     const ids = await seed("owner-account-update-first", "account-update-first");
-    const updater = await pool.connect();
-    const poster = await pool.connect();
+    const concurrentPool = new Pool({ connectionString: databaseUrl, max: 2, options: `-c search_path=${schema},public` });
+    const updater = await concurrentPool.connect();
+    const poster = await concurrentPool.connect();
     try {
       await updater.query(`SET search_path TO "${schema}", public`);
       await poster.query(`SET search_path TO "${schema}", public`);
@@ -823,15 +824,17 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
         "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
         [randomUUID(), ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
       );
+      const postingRejected = expect(posting).rejects.toMatchObject({ code: "23514" });
       await waitForLockWait(pid);
       await updater.query("COMMIT");
-      await expect(posting).rejects.toMatchObject({ code: "23514" });
+      await postingRejected;
       await poster.query("ROLLBACK").catch(() => undefined);
     } finally {
       await updater.query("ROLLBACK").catch(() => undefined);
       await poster.query("ROLLBACK").catch(() => undefined);
       updater.release();
       poster.release();
+      await concurrentPool.end();
     }
 
     const result = await query("SELECT currency FROM accounts WHERE id = $1", [ids.debitAccountId]);
@@ -842,8 +845,9 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
 
   it("prevents an account currency update from invalidating a concurrent committed posting", async () => {
     const ids = await seed("owner-posting-first", "posting-first");
-    const poster = await pool.connect();
-    const updater = await pool.connect();
+    const concurrentPool = new Pool({ connectionString: databaseUrl, max: 2, options: `-c search_path=${schema},public` });
+    const poster = await concurrentPool.connect();
+    const updater = await concurrentPool.connect();
     try {
       await poster.query(`SET search_path TO "${schema}", public`);
       await updater.query(`SET search_path TO "${schema}", public`);
@@ -857,15 +861,17 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
       const pidResult = await updater.query("SELECT pg_backend_pid() AS pid");
       const pid = Number(pidResult.rows[0]?.pid);
       const update = updater.query("UPDATE accounts SET currency = 'USD' WHERE id = $1", [ids.debitAccountId]);
+      const updateRejected = expect(update).rejects.toMatchObject({ code: "23514" });
       await waitForLockWait(pid);
       await poster.query("COMMIT");
-      await expect(update).rejects.toMatchObject({ code: "23514" });
+      await updateRejected;
       await updater.query("ROLLBACK").catch(() => undefined);
     } finally {
       await poster.query("ROLLBACK").catch(() => undefined);
       await updater.query("ROLLBACK").catch(() => undefined);
       poster.release();
       updater.release();
+      await concurrentPool.end();
     }
 
     const account = await query("SELECT currency FROM accounts WHERE id = $1", [ids.debitAccountId]);
