@@ -1,5 +1,4 @@
 packages:
-  - "apps/*"
-  - "!apps/mobile"
+  - "apps/web"
   - "packages/*"
   - "services/*"
