@@ -15,6 +15,7 @@ const migrationFiles = [
   "010_ledger_entry_integrity_trigger.sql",
   "011_deferred_balanced_ledger.sql",
   "012_lock_ledger_parent_rows.sql",
+  "013_fx_quote_and_conversion_records.sql",
 ] as const;
 
 export async function loadApiMigrations(): Promise<readonly Migration[]> {
