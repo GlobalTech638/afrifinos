@@ -87,9 +87,31 @@ export const api = {
   }) => request<unknown>("/transactions", session, { method: "POST", body: JSON.stringify(body) }),
 };
 
+const ZERO_DECIMAL_CURRENCIES = new Set(["UGX", "RWF", "BIF", "XOF", "XAF", "GNF", "KMF", "DJF"]);
+const THREE_DECIMAL_CURRENCIES = new Set(["TND", "LYD"]);
+
+export function currencyMinorUnitExponent(currency: string): number {
+  const code = currency.trim().toUpperCase();
+  if (ZERO_DECIMAL_CURRENCIES.has(code)) return 0;
+  if (THREE_DECIMAL_CURRENCIES.has(code)) return 3;
+  return 2;
+}
+
+/** Convert a user-entered major-unit amount to an exact integer minor-unit string. */
+export function parseMajorToMinor(value: string, currency: string): string | null {
+  const normalized = value.trim();
+  if (!/^\\d+(?:\\.\\d+)?$/.test(normalized)) return null;
+  const digits = currencyMinorUnitExponent(currency);
+  const [whole = "0", fraction = ""] = normalized.split(".");
+  if (fraction.length > digits) return null;
+  const minor = BigInt(whole) * (10n ** BigInt(digits)) +
+    BigInt(digits ? fraction.padEnd(digits, "0") || "0" : "0");
+  return minor > 0n ? minor.toString() : null;
+}
+
 export function formatMinor(amountMinor: string | number | bigint, currency = "KES"): string {
-  const zeroDecimal = new Set(["UGX", "RWF", "JPY", "XOF", "XAF", "BIF", "GNF", "KMF"]).has(currency);
-  const fractionDigits = zeroDecimal ? 0 : 2;
+  const code = currency.trim().toUpperCase();
+  const fractionDigits = currencyMinorUnitExponent(code);
   const divisor = 10n ** BigInt(fractionDigits);
   const minor = BigInt(amountMinor);
   const negative = minor < 0n;
@@ -98,7 +120,7 @@ export function formatMinor(amountMinor: string | number | bigint, currency = "K
   const fraction = fractionDigits ? (absolute % divisor).toString().padStart(fractionDigits, "0") : "";
   const formattedWhole = new Intl.NumberFormat("en-KE", {
     style: "currency",
-    currency,
+    currency: code,
     maximumFractionDigits: 0,
     minimumFractionDigits: 0,
   }).format(whole);
