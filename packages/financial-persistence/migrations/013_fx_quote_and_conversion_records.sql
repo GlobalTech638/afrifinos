@@ -89,13 +89,19 @@ BEGIN
 
   IF source_row.owner_id <> NEW.owner_id OR destination_row.owner_id <> NEW.owner_id
      OR source_row.status <> 'posted' OR destination_row.status <> 'posted'
+     OR source_row.type <> 'transfer' OR destination_row.type <> 'transfer'
      OR source_row.currency <> quote_row.base_currency
      OR destination_row.currency <> quote_row.quote_currency
      OR source_row.amount_minor <> quote_row.base_amount_minor
      OR destination_row.amount_minor <> quote_row.quote_amount_minor THEN
-    RAISE EXCEPTION 'FX conversion transactions do not match the owner, quote currencies, amounts, or posted status'
+    RAISE EXCEPTION 'FX conversion transactions do not match the owner, transfer type, quote currencies, amounts, or posted status'
       USING ERRCODE = '23514';
   END IF;
+
+  -- A posted status alone is not proof of a valid ledger. Require each
+  -- currency leg to satisfy the existing deferred double-entry invariant.
+  PERFORM assert_transaction_ledger_balanced(source_row.id);
+  PERFORM assert_transaction_ledger_balanced(destination_row.id);
 
   RETURN NEW;
 END;
