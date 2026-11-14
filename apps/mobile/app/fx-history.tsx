@@ -64,6 +64,6 @@ export default function FxHistoryScreen() {
           </View>
         </Card>)}
       </View>}
-    <Button title="Refresh history" onPress={() => void load()} busy={loading} variant="secondary" />
+    <Button title="Refresh history" onPress={() => void load()} busy={loading} secondary />
   </Screen>;
 }
