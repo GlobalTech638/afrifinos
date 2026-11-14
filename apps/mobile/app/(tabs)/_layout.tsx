@@ -7,6 +7,7 @@ const glyphs: Record<string, string> = {
   transactions: "↕",
   accounts: "▣",
   insights: "◔",
+  planner: "✧",
   profile: "○",
 };
 
@@ -23,6 +24,7 @@ export default function TabLayout() {
     <Tabs.Screen name="transactions" options={{ title: "Activity" }} />
     <Tabs.Screen name="accounts" options={{ title: "Accounts" }} />
     <Tabs.Screen name="insights" options={{ title: "Insights" }} />
+    <Tabs.Screen name="planner" options={{ title: "Plan" }} />
     <Tabs.Screen name="profile" options={{ title: "Profile" }} />
   </Tabs>;
 }
