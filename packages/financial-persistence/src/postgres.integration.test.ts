@@ -933,6 +933,15 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
       "INSERT INTO fx_conversions (owner_id,quote_id,source_transaction_id,destination_transaction_id,idempotency_key) VALUES ($1,$2,$3,$4,'fx-valid-once')",
       [ownerId, ids.quote, ids.sourceTxn, ids.destinationTxn],
     )).rejects.toMatchObject({ code: "23505" });
+    const expiredQuote = randomUUID();
+    await query(
+      "INSERT INTO fx_quotes (id,owner_id,base_currency,quote_currency,base_amount_minor,quote_amount_minor,base_minor_unit_exponent,quote_minor_unit_exponent,rate,rate_source,quoted_at,expires_at) VALUES ($1,$2,'KES','USD',10000,7200,2,2,0.72,'expired-test-provider',now()-interval '10 minutes',now()-interval '5 minutes')",
+      [expiredQuote, ownerId],
+    );
+    await expect(query(
+      "INSERT INTO fx_conversions (owner_id,quote_id,source_transaction_id,destination_transaction_id,idempotency_key) VALUES ($1,$2,$3,$4,'fx-expired-quote')",
+      [ownerId, expiredQuote, ids.sourceTxn, ids.destinationTxn],
+    )).rejects.toThrow(/FX quote expired before conversion execution/);
     const repository = new PostgresFinancialRepository(pool as never);
     const ownerHistory = await repository.getFxConversions(ownerId, 1);
     expect(ownerHistory).toHaveLength(1);
