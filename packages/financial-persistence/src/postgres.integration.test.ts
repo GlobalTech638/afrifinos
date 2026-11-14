@@ -986,6 +986,12 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
       [quoteId, ownerId],
     );
 
+    await expect(query("DELETE FROM fx_quotes WHERE id = $1", [quoteId]))
+      .rejects.toThrow(/FX quote snapshots are immutable/);
+
+    const stillPresent = await query("SELECT id FROM fx_quotes WHERE id = $1", [quoteId]);
+    expect(stillPresent.rows).toHaveLength(1);
+
     await query("DELETE FROM users WHERE id = $1", [ownerId]);
 
     const remaining = await query("SELECT id FROM fx_quotes WHERE id = $1", [quoteId]);
