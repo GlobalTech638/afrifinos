@@ -1,8 +1,8 @@
 import { useCallback, useState } from "react";
 import { Link } from "expo-router";
 import { useFocusEffect } from "expo-router";
-import { Text, View } from "react-native";
-import { api, formatMinor, type Intelligence } from "../../lib/api";
+import { Pressable, Text, View } from "react-native";
+import { api, formatMinor, type Account, type Intelligence } from "../../lib/api";
 import { Button, Card, Empty, Heading, Screen, Stat } from "../../components/ui";
 import { colors } from "../../lib/theme";
 import { useAuth } from "../../providers/auth-provider";
@@ -19,22 +19,49 @@ function sharePercent(part: string, total: string): number {
 export default function InsightsScreen() {
   const { session } = useAuth();
   const [data, setData] = useState<Intelligence | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [currency, setCurrency] = useState("KES");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const load = useCallback(async () => {
     if (!session) return;
     setLoading(true); setError("");
-    try { setData(await api.intelligence(session, "KES")); }
+    try {
+      const nextAccounts = await api.accounts(session);
+      setAccounts(nextAccounts);
+      const currencies = [...new Set(nextAccounts.map((account) => account.currency.toUpperCase()))].sort();
+      const activeCurrency = currencies.includes(currency) ? currency : currencies[0] ?? "KES";
+      setCurrency(activeCurrency);
+      const count = nextAccounts.filter((account) => account.currency.toUpperCase() === activeCurrency).length;
+      setData(count >= 2 ? await api.intelligence(session, activeCurrency) : null);
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to load insights"); }
     finally { setLoading(false); }
-  }, [session]);
+  }, [session, currency]);
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   return <Screen>
     <Heading eyebrow="Financial intelligence" title="Your insights" subtitle="See the patterns behind your money and plan your next move." />
+    {accounts.length > 0 ? <View style={{ gap: 8 }}>
+      <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "900", letterSpacing: 1 }}>INSIGHTS CURRENCY</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        {[...new Set(accounts.map((account) => account.currency.toUpperCase()))].sort().map((code) =>
+          <Pressable key={code} accessibilityRole="button" accessibilityState={{ selected: currency === code }} onPress={() => {
+            setCurrency(code);
+            const count = accounts.filter((account) => account.currency.toUpperCase() === code).length;
+            if (count >= 2 && session) {
+              setLoading(true); setError("");
+              void api.intelligence(session, code).then(setData).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load insights")).finally(() => setLoading(false));
+            } else setData(null);
+          }} style={{ borderRadius: 20, paddingVertical: 9, paddingHorizontal: 14, backgroundColor: currency === code ? colors.blue : colors.white, borderWidth: 1, borderColor: currency === code ? colors.blue : colors.line }}>
+            <Text style={{ color: currency === code ? colors.white : colors.ink, fontSize: 11, fontWeight: "900" }}>{code}</Text>
+          </Pressable>
+        )}
+      </View>
+    </View> : null}
     <Link href="/(tabs)/planner" asChild><Text style={{ color: colors.white, backgroundColor: colors.blue, paddingVertical: 13, paddingHorizontal: 16, borderRadius: 12, overflow: "hidden", fontWeight: "800", textAlign: "center" }}>Check purchase affordability →</Text></Link>
     {error ? <Card><Text style={{ color: colors.danger }}>{error}</Text><Button title="Retry" onPress={() => void load()} secondary /></Card> : null}
-    {loading ? <Empty title="Preparing insights…" detail="Analyzing your recorded financial activity." /> : data ? <>
+    {loading ? <Empty title="Preparing insights…" detail="Analyzing your recorded financial activity." /> : !data ? <Empty title="More account activity needed" detail={`Add at least two ${currency} accounts to unlock financial intelligence in this currency.`} /> : <>
       <Card style={{ backgroundColor: colors.lavender, borderColor: colors.lavender }}>
         <Text style={{ color: colors.blue, fontSize: 11, fontWeight: "800" }}>FINANCIAL HEALTH SCORE</Text>
         <Text style={{ color: colors.ink, fontSize: 42, fontWeight: "900" }}>{data.summary.healthScore.score}<Text style={{ fontSize: 16, color: colors.blue }}>/100</Text></Text>
