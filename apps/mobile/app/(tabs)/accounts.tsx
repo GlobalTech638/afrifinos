@@ -38,14 +38,29 @@ export default function AccountsScreen() {
       <Text style={{ color: "#D7D5FF", fontSize: 11 }}>Bank · M-Pesa · Cash · SACCO · Investments</Text>
     </Card>
     {items.length === 0 ? <Empty title="Start with your accounts" detail="Add the accounts you use every day. AfriFinos needs at least two accounts to represent double-entry transactions." /> :
-      <Card>
-        <Heading title="My accounts" subtitle="Your connected financial accounts." />
-        {items.map((account, index) => <View key={account.accountId} style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.line }}>
-          <View style={{ width: 44, height: 44, borderRadius: 15, backgroundColor: index % 2 === 0 ? colors.lavender : colors.mint, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.blue, fontSize: 20, fontWeight: "900" }}>{icons[account.type]}</Text></View>
-          <View style={{ flex: 1, gap: 4 }}><Text style={{ color: colors.ink, fontWeight: "900", fontSize: 13 }}>{account.name}</Text><Text style={{ color: colors.muted, fontSize: 10 }}>{account.type.replace("_", " ")} · {account.currency}</Text></View>
-          <Text style={{ color: colors.success, fontWeight: "900", fontSize: 10 }}>{account.status}</Text>
-        </View>)}
-      </Card>}
+      <View style={{ gap: 12 }}>
+        {Object.entries(items.reduce<Record<string, Account[]>>((groups, account) => {
+          const code = account.currency.toUpperCase();
+          (groups[code] ??= []).push(account);
+          return groups;
+        }, {})).sort(([a], [b]) => a.localeCompare(b)).map(([currencyCode, currencyAccounts]) =>
+          <Card key={currencyCode}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <View>
+                <Text style={{ color: colors.blue, fontSize: 10, fontWeight: "900", letterSpacing: 1 }}>CURRENCY GROUP</Text>
+                <Text style={{ color: colors.ink, fontSize: 21, fontWeight: "900" }}>{currencyCode}</Text>
+              </View>
+              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800" }}>{currencyAccounts.length} {currencyAccounts.length === 1 ? "account" : "accounts"}</Text>
+            </View>
+            {currencyAccounts.map((account, index) => <View key={account.accountId} style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.line }}>
+              <View style={{ width: 44, height: 44, borderRadius: 15, backgroundColor: index % 2 === 0 ? colors.lavender : colors.mint, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.blue, fontSize: 20, fontWeight: "900" }}>{icons[account.type]}</Text></View>
+              <View style={{ flex: 1, gap: 4 }}><Text style={{ color: colors.ink, fontWeight: "900", fontSize: 13 }}>{account.name}</Text><Text style={{ color: colors.muted, fontSize: 10 }}>{account.type.replace("_", " ")}</Text></View>
+              <Text style={{ color: colors.success, fontWeight: "900", fontSize: 10 }}>{account.status}</Text>
+            </View>)}
+          </Card>
+        )}
+        <Text style={{ color: colors.muted, fontSize: 10, lineHeight: 15 }}>Accounts are grouped by their native currency. AfriFinos keeps currencies separate unless a verified exchange rate is used for conversion.</Text>
+      </View>}
     <Card>
       <Heading title="Add an account" subtitle="Create a place where you hold or owe money." />
       <Label>Account name</Label><Field value={name} onChangeText={setName} placeholder="e.g. M-Pesa wallet" />
