@@ -1,5 +1,5 @@
 import { currencyCode, getCurrencyDefinition, type Account, type Asset, type Liability, type LedgerEntry, type Obligation, type SavingsGoal, type Transaction } from "@afrifinos/financial-domain";
-import type { FinancialRepository, TransactionWriteRepository, TransactionWriteResult, FinancialSignalInput, StoredFinancialSignal, PersistedSignalStatus } from "./index.js";
+import type { FinancialRepository, TransactionWriteRepository, TransactionWriteResult, FinancialSignalInput, StoredFinancialSignal, PersistedSignalStatus, FxConversionRecord } from "./index.js";
 
 export interface SqlQueryResult<Row extends Record<string, unknown> = Record<string, unknown>> { readonly rows: readonly Row[]; }
 export interface SqlClient {
@@ -107,6 +107,37 @@ export class PostgresFinancialRepository implements FinancialRepository, Transac
   async getLiabilities(ownerId: string): Promise<readonly Liability[]> { const result = await this.client.query<Record<string, unknown>>(`SELECT id, owner_id, name, outstanding_minor, currency, as_of, liability_type, interest_rate_annual FROM liabilities WHERE owner_id = $1 ORDER BY as_of DESC`, [ownerId]); return result.rows.map((row) => ({ liabilityId: String(row.id), ownerId: String(row.owner_id), name: String(row.name), outstanding: { amountMinor: BigInt(String(row.outstanding_minor)), currency: requiredCurrency(String(row.currency)) }, liabilityType: String(row.liability_type) as Liability["liabilityType"], ...(row.interest_rate_annual !== null && row.interest_rate_annual !== undefined ? { interestRateAnnual: Number(row.interest_rate_annual) } : {}) })); }
   async getObligations(ownerId: string): Promise<readonly Obligation[]> { const result = await this.client.query<Record<string, unknown>>(`SELECT id, owner_id, name, amount_minor, currency, due_at, status, recurring, recurrence, kind, liability_id FROM obligations WHERE owner_id = $1 ORDER BY due_at ASC NULLS LAST`, [ownerId]); return result.rows.map((row) => ({ obligationId: String(row.id), ownerId: String(row.owner_id), name: String(row.name), amount: { amountMinor: BigInt(String(row.amount_minor)), currency: requiredCurrency(String(row.currency)) }, ...(row.due_at ? { dueAt: String(row.due_at) } : {}), status: String(row.status) as Obligation["status"], recurring: Boolean(row.recurring), ...(row.recurrence ? { recurrence: String(row.recurrence) as NonNullable<Obligation["recurrence"]> } : {}), ...(row.kind ? { kind: String(row.kind) as NonNullable<Obligation["kind"]> } : {}), ...(row.liability_id ? { liabilityId: String(row.liability_id) } : {}) })); }
   async getSavingsGoals(ownerId: string): Promise<readonly SavingsGoal[]> { const result = await this.client.query<Record<string, unknown>>(`SELECT id, owner_id, name, target_minor, current_minor, currency, target_date, status FROM savings_goals WHERE owner_id = $1 ORDER BY target_date ASC NULLS LAST`, [ownerId]); return result.rows.map((row) => ({ goalId: String(row.id), ownerId: String(row.owner_id), name: String(row.name), target: { amountMinor: BigInt(String(row.target_minor)), currency: requiredCurrency(String(row.currency)) }, current: { amountMinor: BigInt(String(row.current_minor)), currency: requiredCurrency(String(row.currency)) }, ...(row.target_date ? { targetAt: String(row.target_date) } : {}), status: String(row.status) as SavingsGoal["status"] })); }
+  async getFxConversions(ownerId: string, limit = 50): Promise<readonly FxConversionRecord[]> {
+    if (!ownerId.trim()) throw new Error("FX conversion ownerId cannot be empty");
+    const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 100) : 50;
+    const result = await this.client.query<Record<string, unknown>>(`SELECT
+      c.id AS conversion_id, c.quote_id, c.source_transaction_id, c.destination_transaction_id,
+      q.base_currency, q.quote_currency, q.base_amount_minor, q.quote_amount_minor,
+      q.base_minor_unit_exponent, q.quote_minor_unit_exponent, q.rate, q.rate_source,
+      q.quoted_at, q.expires_at, c.executed_at
+      FROM fx_conversions c
+      INNER JOIN fx_quotes q ON q.id = c.quote_id
+      WHERE c.owner_id = $1
+      ORDER BY c.executed_at DESC, c.id DESC
+      LIMIT $2`, [ownerId, safeLimit]);
+    return result.rows.map((row) => ({
+      conversionId: String(row.conversion_id),
+      quoteId: String(row.quote_id),
+      sourceTransactionId: String(row.source_transaction_id),
+      destinationTransactionId: String(row.destination_transaction_id),
+      baseCurrency: String(row.base_currency).trim(),
+      quoteCurrency: String(row.quote_currency).trim(),
+      baseAmountMinor: String(row.base_amount_minor),
+      quoteAmountMinor: String(row.quote_amount_minor),
+      baseMinorUnitExponent: Number(row.base_minor_unit_exponent),
+      quoteMinorUnitExponent: Number(row.quote_minor_unit_exponent),
+      rate: String(row.rate),
+      rateSource: String(row.rate_source),
+      quotedAt: new Date(String(row.quoted_at)).toISOString(),
+      expiresAt: new Date(String(row.expires_at)).toISOString(),
+      executedAt: new Date(String(row.executed_at)).toISOString(),
+    }));
+  }
   private signalFromRow(row: Record<string, unknown>): StoredFinancialSignal {
     const rawEvidence = row.evidence_ids;
     const evidenceIds = Array.isArray(rawEvidence) ? rawEvidence.map(String) : typeof rawEvidence === "string" ? JSON.parse(rawEvidence) as string[] : [];
