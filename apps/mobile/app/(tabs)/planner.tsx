@@ -1,20 +1,10 @@
 import { useState } from "react";
 import { Text, View } from "react-native";
-import { api, formatMinor, type AffordabilityResult } from "../../lib/api";
+import { api, formatMinor, parseMajorToMinor, type AffordabilityResult } from "../../lib/api";
 import { Button, Card, ErrorText, Field, Heading, Label, Screen } from "../../components/ui";
 import { colors } from "../../lib/theme";
 import { useAuth } from "../../providers/auth-provider";
 
-function parseMinor(value: string, currency: string): string | null {
-  const normalized = value.trim();
-  if (!/^\d+(?:\.\d{1,3})?$/.test(normalized)) return null;
-  const zeroDecimal = new Set(["UGX", "RWF", "JPY", "XOF", "XAF", "BIF", "GNF", "KMF"]).has(currency);
-  const digits = zeroDecimal ? 0 : 2;
-  const [whole = "0", fraction = ""] = normalized.split(".");
-  if (digits === 0 && Number(fraction) !== 0) return null;
-  const minor = BigInt(whole) * (10n ** BigInt(digits)) + BigInt(digits ? (fraction + "0".repeat(digits)).slice(0, digits) : "0");
-  return minor > 0n ? minor.toString() : null;
-}
 
 export default function PlannerScreen() {
   const { session } = useAuth();
@@ -29,8 +19,8 @@ export default function PlannerScreen() {
     if (!session) return;
     const code = currency.trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(code)) { setError("Enter a three-letter currency code."); return; }
-    const amountMinor = parseMinor(amount, code);
-    const recurringMinor = recurring.trim() ? parseMinor(recurring, code) : "0";
+    const amountMinor = parseMajorToMinor(amount, code);
+    const recurringMinor = recurring.trim() ? parseMajorToMinor(recurring, code) : "0";
     if (!amountMinor) { setError("Enter a valid purchase amount."); return; }
     if (recurring.trim() && !recurringMinor) { setError("Enter a valid recurring monthly cost."); return; }
     setBusy(true); setError(""); setResult(null);
