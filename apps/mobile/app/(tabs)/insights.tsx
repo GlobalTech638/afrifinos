@@ -46,14 +46,7 @@ export default function InsightsScreen() {
       <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "900", letterSpacing: 1 }}>INSIGHTS CURRENCY</Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         {[...new Set(accounts.map((account) => account.currency.toUpperCase()))].sort().map((code) =>
-          <Pressable key={code} accessibilityRole="button" accessibilityState={{ selected: currency === code }} onPress={() => {
-            setCurrency(code);
-            const count = accounts.filter((account) => account.currency.toUpperCase() === code).length;
-            if (count >= 2 && session) {
-              setLoading(true); setError("");
-              void api.intelligence(session, code).then(setData).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load insights")).finally(() => setLoading(false));
-            } else setData(null);
-          }} style={{ borderRadius: 20, paddingVertical: 9, paddingHorizontal: 14, backgroundColor: currency === code ? colors.blue : colors.white, borderWidth: 1, borderColor: currency === code ? colors.blue : colors.line }}>
+          <Pressable key={code} accessibilityRole="button" accessibilityState={{ selected: currency === code }} onPress={() => setCurrency(code)} style={{ borderRadius: 20, paddingVertical: 9, paddingHorizontal: 14, backgroundColor: currency === code ? colors.blue : colors.white, borderWidth: 1, borderColor: currency === code ? colors.blue : colors.line }}>
             <Text style={{ color: currency === code ? colors.white : colors.ink, fontSize: 11, fontWeight: "900" }}>{code}</Text>
           </Pressable>
         )}
