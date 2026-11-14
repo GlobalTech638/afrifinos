@@ -12,27 +12,41 @@ export default function DashboardScreen() {
   const [data, setData] = useState<Intelligence | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [selectedCurrency, setSelectedCurrency] = useState("KES");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (requestedCurrency = selectedCurrency) => {
     if (!session) return;
     setLoading(true); setError("");
     try {
       const nextAccounts = await api.accounts(session);
       setAccounts(nextAccounts);
-      setData(nextAccounts.length >= 2 ? await api.intelligence(session, "KES") : null);
+      const availableCurrencies = [...new Set(nextAccounts.map((account) => account.currency.toUpperCase()))].sort();
+      const currency = availableCurrencies.includes(requestedCurrency) ? requestedCurrency : availableCurrencies[0] ?? "KES";
+      setSelectedCurrency(currency);
+      setData(nextAccounts.length >= 2 ? await api.intelligence(session, currency) : null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load your dashboard");
     } finally { setLoading(false); }
-  }, [session]);
+  }, [session, selectedCurrency]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   return <Screen>
     <Heading eyebrow="AFRIFINOS · YOUR MONEY" title="Good morning 👋" subtitle="Here's your financial snapshot." action={<View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.lavender, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.blue, fontSize: 19 }}>◉</Text></View>} />
     {error ? <Card><Text style={{ color: colors.danger }}>{error}</Text><Button title="Try again" onPress={() => void load()} secondary /></Card> : null}
+    {accounts.length > 0 ? <View style={{ gap: 8 }}>
+      <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "900", letterSpacing: 1 }}>VIEW FINANCES IN</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        {[...new Set(accounts.map((account) => account.currency.toUpperCase()))].sort().map((currency) =>
+          <Pressable key={currency} accessibilityRole="button" accessibilityState={{ selected: selectedCurrency === currency }} onPress={() => { setSelectedCurrency(currency); void load(currency); }} style={{ borderRadius: 20, paddingVertical: 9, paddingHorizontal: 14, backgroundColor: selectedCurrency === currency ? colors.blue : colors.white, borderWidth: 1, borderColor: selectedCurrency === currency ? colors.blue : colors.line }}>
+            <Text style={{ color: selectedCurrency === currency ? colors.white : colors.ink, fontSize: 11, fontWeight: "900" }}>{currency}</Text>
+          </Pressable>
+        )}
+      </View>
+    </View> : null}
     <Card style={{ backgroundColor: colors.blue, borderColor: colors.blue, padding: 21, overflow: "hidden" }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <Text style={{ color: "#E8E6FF", fontSize: 12, fontWeight: "800" }}>TOTAL BALANCE · KES</Text>
+        <Text style={{ color: "#E8E6FF", fontSize: 12, fontWeight: "800" }}>LIQUID BALANCE · {data?.currency ?? selectedCurrency}</Text>
         <Text style={{ color: colors.blue, backgroundColor: "#E2FFF6", overflow: "hidden", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, fontSize: 10, fontWeight: "900" }}>● ACTIVE</Text>
       </View>
       <Text style={{ color: colors.white, fontSize: 33, fontWeight: "900", marginTop: 9 }}>{data ? formatMinor(data.summary.liquidBalanceMinor, data.currency) : loading ? "Loading…" : "—"}</Text>
