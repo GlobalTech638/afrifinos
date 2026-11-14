@@ -888,6 +888,70 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     expect(entries.rows[0]?.count).toBe(2);
   }, 15_000);
 
+
+  it("records an FX conversion only when both currency legs are balanced posted transfers", async () => {
+    const ownerId = "owner-fx-valid";
+    await query("INSERT INTO users (id) VALUES ($1)", [ownerId]);
+    const ids = {
+      sourceTxn: randomUUID(), destinationTxn: randomUUID(), quote: randomUUID(), conversion: randomUUID(),
+      sourceDebit: randomUUID(), sourceCredit: randomUUID(), destinationDebit: randomUUID(), destinationCredit: randomUUID(),
+      sourceCash: randomUUID(), sourceClearing: randomUUID(), destinationCash: randomUUID(), destinationClearing: randomUUID(),
+    };
+    await query(
+      "INSERT INTO accounts (id, owner_id, name, type, currency) VALUES ($1,$2,'KES cash','cash','KES'),($3,$2,'KES FX clearing','other','KES'),($4,$2,'USD cash','cash','USD'),($5,$2,'USD FX clearing','other','USD')",
+      [ids.sourceCash, ownerId, ids.sourceClearing, ids.destinationCash, ids.destinationClearing],
+    );
+    await query(
+      "INSERT INTO transactions (id, owner_id, type, status, occurred_at, amount_minor, currency, source_kind) VALUES ($1,$2,'transfer','posted',now(),10000,'KES','system'),($3,$2,'transfer','posted',now(),7200,'USD','system')",
+      [ids.sourceTxn, ownerId, ids.destinationTxn],
+    );
+    await query(
+      "INSERT INTO ledger_entries (id,transaction_id,account_id,currency,amount_minor,direction,posted_at) VALUES ($1,$2,$3,'KES',10000,'debit',now()),($4,$2,$5,'KES',10000,'credit',now()),($6,$7,$8,'USD',7200,'debit',now()),($9,$7,$10,'USD',7200,'credit',now())",
+      [ids.sourceDebit, ids.sourceTxn, ids.sourceCash, ids.sourceCredit, ids.sourceClearing, ids.destinationDebit, ids.destinationTxn, ids.destinationCash, ids.destinationCredit, ids.destinationClearing],
+    );
+    await query(
+      "INSERT INTO fx_quotes (id,owner_id,base_currency,quote_currency,base_amount_minor,quote_amount_minor,rate,rate_source,quoted_at,expires_at) VALUES ($1,$2,'KES','USD',10000,7200,0.72,'test-provider',now(),now()+interval '5 minutes')",
+      [ids.quote, ownerId],
+    );
+    await query(
+      "INSERT INTO fx_conversions (id,owner_id,quote_id,source_transaction_id,destination_transaction_id,idempotency_key) VALUES ($1,$2,$3,$4,$5,'fx-valid-once')",
+      [ids.conversion, ownerId, ids.quote, ids.sourceTxn, ids.destinationTxn],
+    );
+    const stored = await query("SELECT id FROM fx_conversions WHERE id = $1", [ids.conversion]);
+    expect(stored.rows).toHaveLength(1);
+    await expect(query("UPDATE fx_quotes SET rate = 0.73 WHERE id = $1", [ids.quote]))
+      .rejects.toThrow(/FX quote snapshots are immutable/);
+    await expect(query("UPDATE fx_conversions SET idempotency_key = 'changed' WHERE id = $1", [ids.conversion]))
+      .rejects.toThrow(/FX conversion records are immutable/);
+  });
+
+  it("rejects an FX conversion when either transaction amount differs from its immutable quote", async () => {
+    const ownerId = "owner-fx-mismatch";
+    await query("INSERT INTO users (id) VALUES ($1)", [ownerId]);
+    const sourceTxn = randomUUID(), destinationTxn = randomUUID(), quote = randomUUID();
+    const accountIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    await query(
+      "INSERT INTO accounts (id,owner_id,name,type,currency) VALUES ($1,$2,'KES cash','cash','KES'),($3,$2,'KES clearing','other','KES'),($4,$2,'USD cash','cash','USD'),($5,$2,'USD clearing','other','USD')",
+      [accountIds[0], ownerId, accountIds[1], accountIds[2], accountIds[3]],
+    );
+    await query(
+      "INSERT INTO transactions (id,owner_id,type,status,occurred_at,amount_minor,currency,source_kind) VALUES ($1,$2,'transfer','posted',now(),10000,'KES','system'),($3,$2,'transfer','posted',now(),7100,'USD','system')",
+      [sourceTxn, ownerId, destinationTxn],
+    );
+    await query(
+      "INSERT INTO ledger_entries (id,transaction_id,account_id,currency,amount_minor,direction,posted_at) VALUES ($1,$2,$3,'KES',10000,'debit',now()),($4,$2,$5,'KES',10000,'credit',now()),($6,$7,$8,'USD',7100,'debit',now()),($9,$7,$10,'USD',7100,'credit',now())",
+      [randomUUID(), sourceTxn, accountIds[0], randomUUID(), accountIds[1], randomUUID(), destinationTxn, accountIds[2], randomUUID(), accountIds[3]],
+    );
+    await query(
+      "INSERT INTO fx_quotes (id,owner_id,base_currency,quote_currency,base_amount_minor,quote_amount_minor,rate,rate_source,quoted_at,expires_at) VALUES ($1,$2,'KES','USD',10000,7200,0.72,'test-provider',now(),now()+interval '5 minutes')",
+      [quote, ownerId],
+    );
+    await expect(query(
+      "INSERT INTO fx_conversions (owner_id,quote_id,source_transaction_id,destination_transaction_id,idempotency_key) VALUES ($1,$2,$3,$4,'fx-mismatch')",
+      [ownerId, quote, sourceTxn, destinationTxn],
+    )).rejects.toThrow(/do not match the owner, transfer type, quote currencies, amounts, or posted status/);
+  });
+
 });
 
 void integration;
