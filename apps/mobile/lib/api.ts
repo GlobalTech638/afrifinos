@@ -101,8 +101,9 @@ export function formatMinor(amountMinor: string | number | bigint, currency = "K
     currency,
     maximumFractionDigits: 0,
     minimumFractionDigits: 0,
-  }).format(negative ? -whole : whole);
-  return fraction ? `${formattedWhole}.${fraction}` : (negative && whole === 0n ? formattedWhole.replace(/^/, "-") : formattedWhole);
+  }).format(whole);
+  const signedWhole = negative ? `-${formattedWhole}` : formattedWhole;
+  return fraction ? `${signedWhole}.${fraction}` : signedWhole;
 }
 
 export function shortDate(value: string): string {
