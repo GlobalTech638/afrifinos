@@ -23,7 +23,8 @@ export default function DashboardScreen() {
       const availableCurrencies = [...new Set(nextAccounts.map((account) => account.currency.toUpperCase()))].sort();
       const currency = availableCurrencies.includes(requestedCurrency) ? requestedCurrency : availableCurrencies[0] ?? "KES";
       setSelectedCurrency(currency);
-      setData(nextAccounts.length >= 2 ? await api.intelligence(session, currency) : null);
+      const currencyAccountCount = nextAccounts.filter((account) => account.currency.toUpperCase() === currency).length;
+      setData(currencyAccountCount >= 2 ? await api.intelligence(session, currency) : null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load your dashboard");
     } finally { setLoading(false); }
