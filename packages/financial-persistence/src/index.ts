@@ -33,6 +33,24 @@ export interface StoredFinancialSignal {
   readonly acknowledgedAt?: string;
   readonly resolvedAt?: string;
 }
+export interface FxConversionRecord {
+  readonly conversionId: string;
+  readonly quoteId: string;
+  readonly sourceTransactionId: string;
+  readonly destinationTransactionId: string;
+  readonly baseCurrency: string;
+  readonly quoteCurrency: string;
+  readonly baseAmountMinor: string;
+  readonly quoteAmountMinor: string;
+  readonly baseMinorUnitExponent: number;
+  readonly quoteMinorUnitExponent: number;
+  readonly rate: string;
+  readonly rateSource: string;
+  readonly quotedAt: string;
+  readonly expiresAt: string;
+  readonly executedAt: string;
+}
+
 export interface FinancialRepository {
   reconcileFinancialSignals(ownerId: string, signals: readonly FinancialSignalInput[], reconciledAt?: string): Promise<readonly StoredFinancialSignal[]>;
   acknowledgeFinancialSignal(ownerId: string, signalId: string): Promise<StoredFinancialSignal | null>;
@@ -49,6 +67,7 @@ export interface FinancialRepository {
   getLiabilities(ownerId: string): Promise<readonly Liability[]>;
   getObligations(ownerId: string): Promise<readonly Obligation[]>;
   getSavingsGoals(ownerId: string): Promise<readonly SavingsGoal[]>;
+  getFxConversions?(ownerId: string, limit?: number): Promise<readonly FxConversionRecord[]>;
 }
 
 export type TransactionWriteResult = "inserted" | "duplicate";
