@@ -947,7 +947,7 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
       [randomUUID(), sourceTxn, accountIds[0], randomUUID(), accountIds[1], randomUUID(), destinationTxn, accountIds[2], randomUUID(), accountIds[3]],
     );
     await query(
-      "INSERT INTO fx_quotes (id,owner_id,base_currency,quote_currency,base_amount_minor,quote_amount_minor,rate,rate_source,quoted_at,expires_at) VALUES ($1,$2,'KES','USD',10000,7200,0.72,'test-provider',now(),now()+interval '5 minutes')",
+      "INSERT INTO fx_quotes (id,owner_id,base_currency,quote_currency,base_amount_minor,quote_amount_minor,base_minor_unit_exponent,quote_minor_unit_exponent,rate,rate_source,quoted_at,expires_at) VALUES ($1,$2,'KES','USD',10000,7200,2,2,0.72,'test-provider',now(),now()+interval '5 minutes')",
       [quote, ownerId],
     );
     await expect(query(
