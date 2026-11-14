@@ -7,6 +7,15 @@ import { Button, Card, Empty, Heading, Screen, Stat } from "../../components/ui"
 import { colors } from "../../lib/theme";
 import { useAuth } from "../../providers/auth-provider";
 
+function sharePercent(part: string, total: string): number {
+  try {
+    const denominator = BigInt(total);
+    if (denominator <= 0n) return 0;
+    const numerator = BigInt(part);
+    return Number((numerator * 100n) / denominator);
+  } catch { return 0; }
+}
+
 export default function InsightsScreen() {
   const { session } = useAuth();
   const [data, setData] = useState<Intelligence | null>(null);
@@ -36,6 +45,33 @@ export default function InsightsScreen() {
         <View style={{ flex: 1 }}><Stat label="Savings rate" value={data.summary.savings.savingsRate == null ? "—" : `${(data.summary.savings.savingsRate * 100).toFixed(1)}%`} /></View>
         <View style={{ flex: 1 }}><Stat label="Debt burden" value={data.summary.debt.debtBurdenRatio == null ? "—" : `${(data.summary.debt.debtBurdenRatio * 100).toFixed(1)}%`} /></View>
       </View>
+      <Card>
+        <Heading title="Cash-flow overview" subtitle="Income and expenses recorded for this reporting period." />
+        <View style={{ gap: 13 }}>
+          <View style={{ gap: 6 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700" }}>Income</Text>
+              <Text style={{ color: colors.success, fontSize: 12, fontWeight: "900" }}>{formatMinor(data.summary.cashFlow.incomeMinor, data.currency)}</Text>
+            </View>
+            <View accessibilityRole="progressbar" accessibilityLabel="Income share of total cash flow" accessibilityValue={{ min: 0, max: 100, now: sharePercent(data.summary.cashFlow.incomeMinor, (BigInt(data.summary.cashFlow.incomeMinor) + BigInt(data.summary.cashFlow.expenseMinor)).toString()) }} style={{ height: 10, borderRadius: 10, backgroundColor: colors.line, overflow: "hidden" }}>
+              <View style={{ height: 10, width: `${sharePercent(data.summary.cashFlow.incomeMinor, (BigInt(data.summary.cashFlow.incomeMinor) + BigInt(data.summary.cashFlow.expenseMinor)).toString())}%`, backgroundColor: colors.teal, borderRadius: 10 }} />
+            </View>
+          </View>
+          <View style={{ gap: 6 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700" }}>Expenses</Text>
+              <Text style={{ color: colors.ink, fontSize: 12, fontWeight: "900" }}>{formatMinor(data.summary.cashFlow.expenseMinor, data.currency)}</Text>
+            </View>
+            <View accessibilityRole="progressbar" accessibilityLabel="Expense share of total cash flow" accessibilityValue={{ min: 0, max: 100, now: sharePercent(data.summary.cashFlow.expenseMinor, (BigInt(data.summary.cashFlow.incomeMinor) + BigInt(data.summary.cashFlow.expenseMinor)).toString()) }} style={{ height: 10, borderRadius: 10, backgroundColor: colors.line, overflow: "hidden" }}>
+              <View style={{ height: 10, width: `${sharePercent(data.summary.cashFlow.expenseMinor, (BigInt(data.summary.cashFlow.incomeMinor) + BigInt(data.summary.cashFlow.expenseMinor)).toString())}%`, backgroundColor: colors.blue, borderRadius: 10 }} />
+            </View>
+          </View>
+          <View style={{ paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.line, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={{ color: colors.muted, fontSize: 11 }}>Net cash flow</Text>
+            <Text style={{ color: BigInt(data.summary.cashFlow.netCashFlowMinor) >= 0n ? colors.success : colors.danger, fontSize: 15, fontWeight: "900" }}>{formatMinor(data.summary.cashFlow.netCashFlowMinor, data.currency)}</Text>
+          </View>
+        </View>
+      </Card>
       <Card><Heading title="Cash-flow forecast" subtitle="Projection from recorded income, expenses and commitments." />
         <View style={{ gap: 12 }}>
           <View><Text style={{ color: colors.muted, fontSize: 11 }}>Projected ending balance</Text><Text style={{ color: colors.ink, fontSize: 20, fontWeight: "900" }}>{formatMinor(data.forecast.endingBalanceMinor, data.currency)}</Text></View>
