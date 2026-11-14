@@ -7,6 +7,9 @@ CREATE TABLE fx_quotes (
   quote_currency CHAR(3) NOT NULL CHECK (quote_currency ~ '^[A-Z]{3}$'),
   base_amount_minor BIGINT NOT NULL CHECK (base_amount_minor > 0),
   quote_amount_minor BIGINT NOT NULL CHECK (quote_amount_minor > 0),
+  base_minor_unit_exponent SMALLINT NOT NULL CHECK (base_minor_unit_exponent BETWEEN 0 AND 3),
+  quote_minor_unit_exponent SMALLINT NOT NULL CHECK (quote_minor_unit_exponent BETWEEN 0 AND 3),
+  -- Rate is quote major units received for one base major unit.
   rate NUMERIC(38, 18) NOT NULL CHECK (rate > 0),
   rate_source TEXT NOT NULL CHECK (length(trim(rate_source)) > 0),
   source_reference TEXT,
@@ -14,7 +17,14 @@ CREATE TABLE fx_quotes (
   expires_at TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (base_currency <> quote_currency),
-  CHECK (expires_at > quoted_at)
+  CHECK (expires_at > quoted_at),
+  CHECK (
+    quote_amount_minor = round(
+      (base_amount_minor::NUMERIC / power(10::NUMERIC, base_minor_unit_exponent))
+      * rate
+      * power(10::NUMERIC, quote_minor_unit_exponent)
+    )::BIGINT
+  )
 );
 
 CREATE INDEX fx_quotes_owner_pair_time_idx
