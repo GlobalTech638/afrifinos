@@ -2,7 +2,7 @@
 -- Each leg remains balanced in its own currency; the conversion record links them.
 CREATE TABLE fx_quotes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   base_currency CHAR(3) NOT NULL CHECK (base_currency ~ '^[A-Z]{3}$'),
   quote_currency CHAR(3) NOT NULL CHECK (quote_currency ~ '^[A-Z]{3}$'),
   base_amount_minor BIGINT NOT NULL CHECK (base_amount_minor > 0),
@@ -32,7 +32,7 @@ CREATE INDEX fx_quotes_owner_pair_time_idx
 
 CREATE TABLE fx_conversions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   quote_id UUID NOT NULL UNIQUE REFERENCES fx_quotes(id) ON DELETE RESTRICT,
   source_transaction_id UUID NOT NULL UNIQUE REFERENCES transactions(id) ON DELETE RESTRICT,
   destination_transaction_id UUID NOT NULL UNIQUE REFERENCES transactions(id) ON DELETE RESTRICT,
