@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
+import { PostgresFinancialRepository } from "./postgres.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity migrations", () => {
@@ -928,6 +929,20 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     );
     const stored = await query("SELECT id FROM fx_conversions WHERE id = $1", [ids.conversion]);
     expect(stored.rows).toHaveLength(1);
+    const repository = new PostgresFinancialRepository(pool as never);
+    const ownerHistory = await repository.getFxConversions(ownerId, 1);
+    expect(ownerHistory).toHaveLength(1);
+    expect(ownerHistory[0]).toMatchObject({
+      conversionId: ids.conversion,
+      quoteId: ids.quote,
+      sourceTransactionId: ids.sourceTxn,
+      destinationTransactionId: ids.destinationTxn,
+      baseCurrency: "KES",
+      quoteCurrency: "USD",
+      baseAmountMinor: "10000",
+      quoteAmountMinor: "7200",
+    });
+    await expect(repository.getFxConversions("different-owner", 1)).resolves.toEqual([]);
     await expect(query("UPDATE fx_quotes SET rate = 0.73 WHERE id = $1", [ids.quote]))
       .rejects.toThrow(/FX quote snapshots are immutable/);
     await expect(query("UPDATE fx_conversions SET idempotency_key = 'changed' WHERE id = $1", [ids.conversion]))
