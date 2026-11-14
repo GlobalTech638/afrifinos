@@ -20,6 +20,24 @@ export type Transaction = {
   counterparty?: string;
 };
 
+export type FxConversion = {
+  conversionId: string;
+  quoteId: string;
+  sourceTransactionId: string;
+  destinationTransactionId: string;
+  baseCurrency: string;
+  quoteCurrency: string;
+  baseAmountMinor: string;
+  quoteAmountMinor: string;
+  baseMinorUnitExponent: number;
+  quoteMinorUnitExponent: number;
+  rate: string;
+  rateSource: string;
+  quotedAt: string;
+  expiresAt: string;
+  executedAt: string;
+};
+
 export type AffordabilityResult = {
   decision: string;
   projectedMinimumBalanceMinor: string;
@@ -67,6 +85,7 @@ async function request<T>(path: string, session: Session, init: RequestInit = {}
 export const api = {
   accounts: (session: Session) => request<Account[]>("/accounts", session),
   transactions: (session: Session) => request<Transaction[]>("/transactions", session),
+  fxConversions: (session: Session, limit = 50) => request<FxConversion[]>(`/fx/conversions?limit=${limit}`, session),
   intelligence: (session: Session, currency = "KES") =>
     request<Intelligence>(`/financial/intelligence?currency=${encodeURIComponent(currency)}`, session),
   createAccount: (session: Session, body: { name: string; type: Account["type"]; currency: string }) =>
