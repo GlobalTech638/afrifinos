@@ -929,6 +929,10 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     );
     const stored = await query("SELECT id FROM fx_conversions WHERE id = $1", [ids.conversion]);
     expect(stored.rows).toHaveLength(1);
+    await expect(query(
+      "INSERT INTO fx_conversions (owner_id,quote_id,source_transaction_id,destination_transaction_id,idempotency_key) VALUES ($1,$2,$3,$4,'fx-valid-once')",
+      [ownerId, ids.quote, ids.sourceTxn, ids.destinationTxn],
+    )).rejects.toMatchObject({ code: "23505" });
     const repository = new PostgresFinancialRepository(pool as never);
     const ownerHistory = await repository.getFxConversions(ownerId, 1);
     expect(ownerHistory).toHaveLength(1);
