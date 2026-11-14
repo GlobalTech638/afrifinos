@@ -77,7 +77,7 @@ export default function AddTransactionScreen() {
     <Card>
       <Label>Transaction type</Label>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7 }}>
-        {transactionTypes.map((value) => <Text key={value} onPress={() => setType(value)} style={{ borderRadius: 10, paddingVertical: 9, paddingHorizontal: 11, overflow: "hidden", backgroundColor: type === value ? colors.blue : colors.canvas, color: type === value ? colors.white : colors.ink, fontWeight: "700", fontSize: 11 }}>{value}</Text>)}
+        {transactionTypes.map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: type === value }} onPress={() => setType(value)} style={{ borderRadius: 10, paddingVertical: 9, paddingHorizontal: 11, backgroundColor: type === value ? colors.blue : colors.canvas, borderWidth: 1, borderColor: type === value ? colors.blue : colors.line }}><Text style={{ color: type === value ? colors.white : colors.ink, fontWeight: "700", fontSize: 11 }}>{value}</Text></Pressable>)}
       </View>
       <Label>Amount ({selected?.currency ?? "KES"})</Label>
       <Field value={amount} onChangeText={setAmount} placeholder="0.00" keyboardType="decimal-pad" />
