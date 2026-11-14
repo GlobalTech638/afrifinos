@@ -17,7 +17,7 @@ export class FxController {
   async listConversions(@OwnerId() ownerId: string, @Query("limit") rawLimit?: string) {
     let limit = 50;
     if (rawLimit !== undefined) {
-      if (!/^\\d+$/.test(rawLimit.trim())) throw new BadRequestException("limit must be an integer between 1 and 100");
+      if (!/^\d+$/.test(rawLimit.trim())) throw new BadRequestException("limit must be an integer between 1 and 100");
       limit = Number(rawLimit);
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
         throw new BadRequestException("limit must be an integer between 1 and 100");
