@@ -961,6 +961,22 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
     )).rejects.toThrow(/do not match the owner, transfer type, quote currencies, amounts, or posted status/);
   });
 
+
+  it("allows owner deletion to cascade unused immutable FX quote snapshots", async () => {
+    const ownerId = "owner-fx-quote-cascade";
+    const quoteId = randomUUID();
+    await query("INSERT INTO users (id) VALUES ($1)", [ownerId]);
+    await query(
+      "INSERT INTO fx_quotes (id,owner_id,base_currency,quote_currency,base_amount_minor,quote_amount_minor,base_minor_unit_exponent,quote_minor_unit_exponent,rate,rate_source,quoted_at,expires_at) VALUES ($1,$2,'KES','USD',10000,7200,2,2,0.72,'test-provider',now(),now()+interval '5 minutes')",
+      [quoteId, ownerId],
+    );
+
+    await query("DELETE FROM users WHERE id = $1", [ownerId]);
+
+    const remaining = await query("SELECT id FROM fx_quotes WHERE id = $1", [quoteId]);
+    expect(remaining.rows).toHaveLength(0);
+  });
+
 });
 
 void integration;
