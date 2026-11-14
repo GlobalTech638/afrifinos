@@ -829,9 +829,10 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
         "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
         [randomUUID(), ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
       );
+      const postingRejected = expect(posting).rejects.toMatchObject({ code: "23514" });
       await waitForLockWait(pid);
       await updater.query("COMMIT");
-      await expect(posting).rejects.toMatchObject({ code: "23514" });
+      await postingRejected;
       await poster.query("ROLLBACK").catch(() => undefined);
     } finally {
       await updater.query("ROLLBACK").catch(() => undefined);
@@ -870,9 +871,10 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
       const pidResult = await updater.query("SELECT pg_backend_pid() AS pid");
       const pid = Number(pidResult.rows[0]?.pid);
       const update = updater.query("UPDATE accounts SET currency = 'USD' WHERE id = $1", [ids.debitAccountId]);
+      const updateRejected = expect(update).rejects.toMatchObject({ code: "23514" });
       await waitForLockWait(pid);
       await poster.query("COMMIT");
-      await expect(update).rejects.toMatchObject({ code: "23514" });
+      await updateRejected;
       await updater.query("ROLLBACK").catch(() => undefined);
     } finally {
       await poster.query("ROLLBACK").catch(() => undefined);

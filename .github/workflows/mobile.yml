@@ -1,0 +1,38 @@
+name: Mobile app
+
+concurrency:
+  group: mobile-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: ["feat/expo-mobile-app"]
+    paths:
+      - "apps/mobile/**"
+      - ".github/workflows/mobile.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      EXPO_PUBLIC_API_URL: https://api.example.invalid
+      EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: test-publishable-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Install Expo-compatible native peers
+        run: |
+          npx expo install --fix
+          npx expo install expo-router react-native-safe-area-context react-native-screens expo-linking expo-constants expo-status-bar
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Export Android bundle
+        run: npx expo export --platform android
