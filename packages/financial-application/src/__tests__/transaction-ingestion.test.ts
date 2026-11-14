@@ -7,7 +7,12 @@ class InMemoryWriteRepository implements TransactionWriteRepository {
   readonly transactions: Transaction[] = [];
   readonly entries: LedgerEntry[] = [];
   readonly ownedAccounts = new Set(["mpesa", "bank", "expense", "income"]);
-  readonly duplicateTransactionIds = new Set<string>();
+  readonly accountCurrencies = new Map([["mpesa", "KES"], ["bank", "KES"], ["expense", "KES"], ["income", "KES"]]);
+  readonly providerTransactions = new Map<string, Transaction>();
+
+  async getTransactionByProviderExternalId(_ownerId: string, providerId: string, externalId: string): Promise<Transaction | null> {
+    return this.providerTransactions.get(`${providerId}:${externalId}`) ?? null;
+  }
 
   async assertAccountsOwnedBy(ownerId: string, accountIds: readonly string[]): Promise<void> {
     if (ownerId !== "user-1" || accountIds.some((accountId) => !this.ownedAccounts.has(accountId))) {
@@ -15,13 +20,40 @@ class InMemoryWriteRepository implements TransactionWriteRepository {
     }
   }
 
+  async assertAccountsCurrency(ownerId: string, accountIds: readonly string[], currency: string): Promise<void> {
+    if (ownerId !== "user-1" || accountIds.some((accountId) => this.accountCurrencies.get(accountId) !== currency)) {
+      throw new Error("Transaction currency must match both account currencies");
+    }
+  }
+
   async saveTransactionWithLedger(
     transaction: Transaction,
     entries: readonly LedgerEntry[],
   ): Promise<TransactionWriteResult> {
-    if (this.duplicateTransactionIds.has(transaction.transactionId)) return "duplicate";
+    const providerId = transaction.provenance.providerId;
+    const externalId = transaction.provenance.externalId;
+    const key = providerId && externalId ? `${providerId}:${externalId}` : undefined;
+    const existing = key ? this.providerTransactions.get(key) : undefined;
+    if (existing) {
+      const samePayload =
+        existing.type === transaction.type &&
+        existing.status === transaction.status &&
+        Date.parse(existing.occurredAt) === Date.parse(transaction.occurredAt) &&
+        existing.description === transaction.description &&
+        existing.counterparty === transaction.counterparty &&
+        existing.categoryId === transaction.categoryId &&
+        existing.total.amountMinor === transaction.total.amountMinor &&
+        existing.total.currency === transaction.total.currency &&
+        existing.provenance.sourceKind === transaction.provenance.sourceKind;
+      if (!samePayload) {
+        throw new Error("Provider transaction identifier conflicts with a different payload");
+      }
+      return "duplicate";
+    }
+
     this.transactions.push(transaction);
     this.entries.push(...entries);
+    if (key) this.providerTransactions.set(key, transaction);
     return "inserted";
   }
 }
@@ -59,7 +91,12 @@ describe("ingestTransaction", () => {
 
   it("reports duplicates without creating ledger entries", async () => {
     const repository = new InMemoryWriteRepository();
-    repository.duplicateTransactionIds.add("tx-duplicate");
+    repository.providerTransactions.set("mpesa:external-duplicate", {
+      transactionId: "tx-duplicate", ownerId: "user-1", type: "expense", status: "posted",
+      occurredAt: "2026-09-14T08:00:00Z", description: "Naivas groceries", categoryId: "food",
+      total: { amountMinor: 2500n, currency: "KES" },
+      provenance: { sourceKind: "provider_api", providerId: "mpesa", externalId: "external-duplicate", importedAt: "2026-09-14T08:00:00Z" },
+    });
 
     const result = await ingestTransaction(repository, {
       ownerId: "user-1",
@@ -69,6 +106,7 @@ describe("ingestTransaction", () => {
       sourceKind: "provider_api",
       providerId: "mpesa",
       input: {
+        externalId: "external-duplicate",
         occurredAt: "2026-09-14T08:00:00Z",
         description: "Naivas groceries",
         amountMinor: 2500n,
@@ -78,6 +116,35 @@ describe("ingestTransaction", () => {
 
     expect(result.persistence).toBe("duplicate");
     expect(result.ledgerEntryCount).toBe(0);
+    expect(repository.transactions).toHaveLength(0);
+    expect(repository.entries).toHaveLength(0);
+  });
+
+  it("rejects a provider identifier reused with a changed payload", async () => {
+    const repository = new InMemoryWriteRepository();
+    repository.providerTransactions.set("mpesa:external-conflict", {
+      transactionId: "tx-original", ownerId: "user-1", type: "expense", status: "posted",
+      occurredAt: "2026-09-14T08:00:00Z", description: "Naivas groceries", categoryId: "food",
+      total: { amountMinor: 2500n, currency: "KES" },
+      provenance: { sourceKind: "provider_api", providerId: "mpesa", externalId: "external-conflict", importedAt: "2026-09-14T08:00:00Z" },
+    });
+
+    await expect(ingestTransaction(repository, {
+      ownerId: "user-1",
+      primaryAccountId: "mpesa",
+      counterAccountId: "expense",
+      transactionId: "tx-changed",
+      sourceKind: "provider_api",
+      providerId: "mpesa",
+      input: {
+        externalId: "external-conflict",
+        occurredAt: "2026-09-14T08:00:00Z",
+        description: "Naivas groceries",
+        amountMinor: 3500n,
+        currency: "KES",
+      },
+    })).rejects.toThrow("Provider transaction identifier conflicts with a different payload");
+
     expect(repository.transactions).toHaveLength(0);
     expect(repository.entries).toHaveLength(0);
   });
@@ -102,6 +169,19 @@ describe("ingestTransaction", () => {
     expect(result.transaction.type).toBe("income");
     expect(result.transaction.total.amountMinor).toBe(100000n);
     expect(repository.entries[0]?.direction).toBe("credit");
+  });
+
+  it("rejects a transaction whose currency does not match both accounts", async () => {
+    const repository = new InMemoryWriteRepository();
+    repository.accountCurrencies.set("bank", "USD");
+
+    await expect(ingestTransaction(repository, {
+      ownerId: "user-1", primaryAccountId: "mpesa", counterAccountId: "bank",
+      transactionId: "tx-currency-mismatch", sourceKind: "manual",
+      input: { occurredAt: "2026-09-14T08:00:00Z", description: "Transfer", amountMinor: 2500n, currency: "KES" },
+    })).rejects.toThrow("Transaction currency must match both account currencies");
+    expect(repository.transactions).toHaveLength(0);
+    expect(repository.entries).toHaveLength(0);
   });
 
   it("rejects identical primary and counter accounts before persistence", async () => {

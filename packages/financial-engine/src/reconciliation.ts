@@ -13,14 +13,16 @@ function normalizeDescription(value: string): string {
 }
 
 export function transactionFingerprint(transaction: RawTransaction): string {
-  return [
+  // JSON array encoding preserves field boundaries even when provider text
+  // contains delimiter characters.
+  return JSON.stringify([
     transaction.occurredAt,
     normalizeDescription(transaction.description),
     String(transaction.amountMinor),
     transaction.currency,
     transaction.type ?? "",
     normalizeDescription(transaction.counterparty ?? ""),
-  ].join("|");
+  ]);
 }
 
 export function identifyTransaction(
@@ -28,8 +30,8 @@ export function identifyTransaction(
   providerId?: string,
 ): TransactionIdentity {
   return {
-    providerId,
-    externalId: transaction.externalId,
+    ...(providerId ? { providerId } : {}),
+    ...(transaction.externalId ? { externalId: transaction.externalId } : {}),
     fingerprint: transactionFingerprint(transaction),
   };
 }
@@ -40,6 +42,8 @@ export interface ProviderBalanceObservation {
   readonly observedBalanceMinor: bigint;
   readonly observedAt: string;
   readonly providerId?: string;
+  /** Provider-supplied stable ID for this balance snapshot, when available. */
+  readonly externalObservationId?: string;
 }
 
 export interface ReconciliationResult {
@@ -47,8 +51,56 @@ export interface ReconciliationResult {
   readonly currency: CurrencyCode;
   readonly ledgerBalanceMinor: bigint;
   readonly observedBalanceMinor: bigint;
+  /** Provider-observed balance minus the ledger-derived balance; positive means the provider reports more funds. */
   readonly differenceMinor: bigint;
+  readonly observedAt: string;
+  readonly providerId?: string;
+  readonly observationKey: string;
   readonly status: "matched" | "difference";
+}
+
+function isValidObservationTimestamp(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match || !Number.isFinite(Date.parse(value))) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const calendarDate = new Date(0);
+  calendarDate.setUTCHours(0, 0, 0, 0);
+  calendarDate.setUTCFullYear(year, month - 1, day);
+  return calendarDate.getUTCFullYear() === year
+    && calendarDate.getUTCMonth() === month - 1
+    && calendarDate.getUTCDate() === day;
+}
+
+/**
+ * Produces a deterministic idempotency key for a provider balance observation.
+ * Provider observation IDs are scoped by account and provider; without one,
+ * the full observation payload is used so distinct snapshots remain distinct.
+ */
+export function reconciliationObservationKey(observation: ProviderBalanceObservation): string {
+  if (observation.externalObservationId !== undefined) {
+    if (!observation.externalObservationId.trim()) {
+      throw new Error("External observation ID cannot be empty");
+    }
+    if (!observation.providerId?.trim()) {
+      throw new Error("External observation ID requires a provider ID");
+    }
+    return JSON.stringify([
+      observation.accountId,
+      observation.providerId,
+      observation.externalObservationId,
+    ]);
+  }
+
+  return JSON.stringify([
+    observation.accountId,
+    observation.providerId ?? "",
+    observation.currency,
+    observation.observedAt,
+    observation.observedBalanceMinor.toString(),
+  ]);
 }
 
 export function reconcileAccountBalance(
@@ -56,8 +108,14 @@ export function reconcileAccountBalance(
   entries: readonly LedgerEntry[],
   observation: ProviderBalanceObservation,
 ): ReconciliationResult {
+  if (!accountId.trim()) {
+    throw new Error("Account ID cannot be empty");
+  }
   if (observation.accountId !== accountId) {
     throw new Error(`Observation account ${observation.accountId} does not match ${accountId}`);
+  }
+  if (!isValidObservationTimestamp(observation.observedAt)) {
+    throw new Error("Observation timestamp must be an ISO 8601 date-time");
   }
 
   let ledgerBalanceMinor = 0n;
@@ -76,6 +134,9 @@ export function reconcileAccountBalance(
     ledgerBalanceMinor,
     observedBalanceMinor: observation.observedBalanceMinor,
     differenceMinor,
+    observedAt: observation.observedAt,
+    ...(observation.providerId ? { providerId: observation.providerId } : {}),
+    observationKey: reconciliationObservationKey(observation),
     status: differenceMinor === 0n ? "matched" : "difference",
   };
 }

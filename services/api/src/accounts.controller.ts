@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Inject, Post } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import type { Account, AccountType, CurrencyCode } from "@afrifinos/financial-domain";
+import { currencyCode, getCurrencyDefinition, type Account, type AccountType, type CurrencyCode } from "@afrifinos/financial-domain";
 import type { FinancialRepository } from "@afrifinos/financial-persistence";
 import { FINANCIAL_REPOSITORY } from "./app.module.js";
 import { OwnerId } from "./auth-context.js";
@@ -34,14 +34,20 @@ export class AccountsController {
 
     if (!name) throw new BadRequestException("name is required");
     if (!ACCOUNT_TYPES.has(type)) throw new BadRequestException("type is invalid");
-    if (!/^[A-Z]{3}$/.test(currency)) throw new BadRequestException("currency must be a 3-letter ISO-style code");
+    let parsedCurrency: CurrencyCode;
+    try {
+      parsedCurrency = currencyCode(currency);
+      getCurrencyDefinition(parsedCurrency);
+    } catch {
+      throw new BadRequestException("currency is not supported");
+    }
 
     const account: Account = {
       accountId: randomUUID(),
       ownerId,
       name,
       type,
-      currency: currency as CurrencyCode,
+      currency: parsedCurrency,
       status: "active",
     };
 

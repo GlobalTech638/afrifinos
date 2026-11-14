@@ -33,6 +33,29 @@ describe("transaction CSV ingestion", () => {
     expect(result.errors[0].row).toBe(3);
   });
 
+  it("rejects duplicate headers, extra row fields, and zero-value postings", () => {
+    const duplicateHeaders = parseTransactionCsv([
+      "occurred_at,description,amount_minor,currency,currency",
+      "2026-09-14T10:00:00Z,Salary,100,KES,KES",
+    ].join("\n"));
+    expect(duplicateHeaders.rows).toHaveLength(0);
+    expect(duplicateHeaders.errors[0]?.message).toContain("Duplicate CSV column");
+
+    const extraFields = parseTransactionCsv([
+      "occurred_at,description,amount_minor,currency",
+      "2026-09-14T10:00:00Z,Salary,100,KES,unexpected",
+    ].join("\n"));
+    expect(extraFields.rows).toHaveLength(0);
+    expect(extraFields.errors[0]?.message).toContain("more fields");
+
+    const zeroAmount = parseTransactionCsv([
+      "occurred_at,description,amount_minor,currency",
+      "2026-09-14T10:00:00Z,Zero transfer,0,KES",
+    ].join("\n"));
+    expect(zeroAmount.rows).toHaveLength(0);
+    expect(zeroAmount.errors).toHaveLength(1);
+  });
+
   it("deduplicates repeated provider events by external ID", () => {
     const parsed = parseTransactionCsv([
       "external_id,occurred_at,description,amount_minor,currency",

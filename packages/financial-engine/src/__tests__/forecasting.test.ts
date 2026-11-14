@@ -8,6 +8,39 @@ const recurring: readonly RecurringTransaction[] = [
 ];
 
 describe("forecastCashFlow", () => {
+  it("rejects unsafe numeric forecast amounts", () => {
+    expect(() => forecastCashFlow({
+      currency: "KES",
+      startingBalanceMinor: Number.MAX_SAFE_INTEGER + 1,
+      averageMonthlyIncomeMinor: 0n,
+      averageMonthlyExpenseMinor: 0n,
+    })).toThrow("Starting balance must be a safe integer when provided as a number");
+
+    expect(() => forecastCashFlow({
+      currency: "KES",
+      startingBalanceMinor: 0n,
+      averageMonthlyIncomeMinor: 1.5,
+      averageMonthlyExpenseMinor: 0n,
+    })).toThrow("Average monthly income must be a safe integer when provided as a number");
+  });
+
+  it("rejects unsupported forecast currencies and horizons", () => {
+    expect(() => forecastCashFlow({
+      currency: "ZZZ" as "KES",
+      startingBalanceMinor: 0n,
+      averageMonthlyIncomeMinor: 0n,
+      averageMonthlyExpenseMinor: 0n,
+    })).toThrow("Unsupported forecast currency: ZZZ");
+
+    expect(() => forecastCashFlow({
+      currency: "KES",
+      startingBalanceMinor: 0n,
+      averageMonthlyIncomeMinor: 0n,
+      averageMonthlyExpenseMinor: 0n,
+      horizonDays: 0 as 30,
+    })).toThrow("Forecast horizon must be a positive safe integer: 0");
+  });
+
   it("adds recurring transactions as discrete events on top of the baseline", () => {
     const forecast = forecastCashFlow({ currency: "KES", startingBalanceMinor: 50000n, averageMonthlyIncomeMinor: 0n, averageMonthlyExpenseMinor: 0n, recurring, asOf: "2026-09-01T00:00:00Z", horizonDays: 30 });
     expect(forecast.projectedIncomeMinor).toBe(100000n);
@@ -21,8 +54,35 @@ describe("forecastCashFlow", () => {
 
   it("schedules the next recurring occurrence relative to the last observed transaction", () => {
     const forecast = forecastCashFlow({ currency: "KES", startingBalanceMinor: 0n, averageMonthlyIncomeMinor: 0n, averageMonthlyExpenseMinor: 0n, recurring: [recurring[0]!], asOf: "2026-09-01T00:00:00Z", horizonDays: 30 });
-    expect(forecast.points[23]?.projectedIncomeMinor).toBe(100000n);
+    expect(forecast.points[22]?.projectedIncomeMinor).toBe(100000n);
     expect(forecast.points[29]?.projectedIncomeMinor).toBe(0n);
+  });
+
+  it("ignores recurring transactions in a different currency", () => {
+    const foreignRecurring: RecurringTransaction = {
+      key: "expense:foreign:USD",
+      description: "Foreign subscription",
+      type: "expense",
+      currency: "USD",
+      amountMinor: 50000n,
+      averageAmountMinor: 50000n,
+      occurrenceCount: 3,
+      averageIntervalDays: 30,
+      cadence: "monthly",
+      confidence: 0.95,
+      lastObservedAt: "2026-08-25T00:00:00Z",
+    };
+    const forecast = forecastCashFlow({
+      currency: "KES",
+      startingBalanceMinor: 100000n,
+      averageMonthlyIncomeMinor: 0n,
+      averageMonthlyExpenseMinor: 0n,
+      recurring: [foreignRecurring],
+      asOf: "2026-09-01T00:00:00Z",
+      horizonDays: 30,
+    });
+    expect(forecast.projectedExpenseMinor).toBe(0n);
+    expect(forecast.endingBalanceMinor).toBe(100000n);
   });
 
   it("includes active one-off obligations on their due date", () => {
@@ -43,8 +103,8 @@ describe("forecastCashFlow", () => {
     const forecast = forecastCashFlow({ currency: "KES", startingBalanceMinor: 100000n, averageMonthlyIncomeMinor: 0n, averageMonthlyExpenseMinor: 0n, obligations: [{ obligationId: "weekly", ownerId: "user-1", name: "Weekly contribution", amount: { amountMinor: 5000n, currency: "KES" }, dueAt: "2026-09-05T00:00:00Z", status: "active", recurring: true, recurrence: "weekly" }], asOf: "2026-09-01T00:00:00Z", horizonDays: 15 });
     expect(forecast.points[3]?.projectedExpenseMinor).toBe(5000n);
     expect(forecast.points[10]?.projectedExpenseMinor).toBe(5000n);
-    expect(forecast.points[14]?.projectedExpenseMinor).toBe(5000n);
-    expect(forecast.endingBalanceMinor).toBe(85000n);
+    expect(forecast.points[14]?.projectedExpenseMinor).toBe(0n);
+    expect(forecast.endingBalanceMinor).toBe(90000n);
   });
 
   it("ignores settled, cancelled, and foreign-currency obligations", () => {

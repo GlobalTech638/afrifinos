@@ -68,7 +68,7 @@ export class ApiFinancialService {
       const generatedAt = new Date().toISOString();
       const accounts = await this.repository.getAccounts(ownerId);
       const transactions = await this.repository.getTransactions(ownerId);
-      const entries = await this.repository.getLedgerEntries(accounts.map((account) => account.accountId));
+      const entries = await this.repository.getLedgerEntries(ownerId, accounts.map((account) => account.accountId));
       const assets = await this.repository.getAssets(ownerId);
       const liabilities = await this.repository.getLiabilities(ownerId);
       const obligations = await this.repository.getObligations(ownerId);

@@ -58,6 +58,22 @@ describe("buildFinancialSummary", () => {
     expect(summary.healthScore.methodologyVersion).toBe("2026-09-v1");
   });
 
+  it("includes months without spending when calculating emergency runway", () => {
+    const history: readonly Transaction[] = [
+      { transactionId: "jan-expense", ownerId: "user-1", type: "expense", status: "posted", occurredAt: "2026-01-10T08:00:00Z", description: "Food", total: { amountMinor: 1000n, currency: "KES" }, provenance: { sourceKind: "manual", importedAt: "2026-01-10T08:00:00Z" } },
+      { transactionId: "mar-expense", ownerId: "user-1", type: "expense", status: "posted", occurredAt: "2026-03-10T08:00:00Z", description: "Food", total: { amountMinor: 2000n, currency: "KES" }, provenance: { sourceKind: "manual", importedAt: "2026-03-10T08:00:00Z" } },
+    ];
+    const summary = buildFinancialSummary({
+      accounts,
+      entries: [],
+      transactions: history,
+      currency: "KES",
+      openingBalances: new Map([["mpesa", 6000n], ["bank", 0n]]),
+    });
+
+    expect(summary.resilience.emergencyRunwayMonths).toBe(6);
+  });
+
   it("counts only explicitly classified debt-service obligations", () => {
     const obligations: readonly Obligation[] = [
       { obligationId: "loan", ownerId: "user-1", name: "Loan repayment", amount: { amountMinor: 10000n, currency: "KES" }, status: "active", recurring: true, recurrence: "monthly", kind: "debt_service" },
@@ -83,6 +99,17 @@ describe("buildFinancialSummary", () => {
     expect(summary.debt.debtServiceMinor).toBe(12000n);
   });
 
+  it("excludes other-currency ledger entries from cash-flow totals", () => {
+    const mixedCurrencyEntries: readonly LedgerEntry[] = [
+      ...entries,
+      { entryId: "usd-income", transactionId: "salary", accountId: "usd-account", currency: "USD", amountMinor: 900000n, direction: "credit", postedAt: "2026-09-01T08:00:00Z" },
+      { entryId: "usd-expense", transactionId: "food", accountId: "usd-account", currency: "USD", amountMinor: 800000n, direction: "debit", postedAt: "2026-09-02T08:00:00Z" },
+    ];
+    const summary = buildFinancialSummary({ accounts, entries: mixedCurrencyEntries, transactions, currency: "KES" });
+    expect(summary.cashFlow.incomeMinor).toBe(100000n);
+    expect(summary.cashFlow.expenseMinor).toBe(25000n);
+  });
+
   it("rejects mixed currencies in assets", () => {
     expect(() => buildFinancialSummary({
       accounts,
@@ -99,4 +126,51 @@ describe("buildFinancialSummary", () => {
       }],
     })).toThrow(/Currency mismatch/);
   });
+
+  it("nets refunds against expenses without misclassifying them as income", () => {
+    const refundTransaction: Transaction = {
+      transactionId: "food-refund",
+      ownerId: "user-1",
+      type: "refund",
+      status: "posted",
+      occurredAt: "2026-09-03T08:00:00Z",
+      description: "Refund for groceries",
+      total: { amountMinor: 5000n, currency: "KES" },
+      provenance: { sourceKind: "manual", importedAt: "2026-09-03T08:00:00Z" },
+    };
+    const refundEntries: readonly LedgerEntry[] = [
+      ...entries,
+      { entryId: "food-refund:primary", transactionId: "food-refund", accountId: "mpesa", currency: "KES", amountMinor: 5000n, direction: "credit", postedAt: "2026-09-03T08:00:00Z" },
+      { entryId: "food-refund:counter", transactionId: "food-refund", accountId: "expense", currency: "KES", amountMinor: 5000n, direction: "debit", postedAt: "2026-09-03T08:00:00Z" },
+    ];
+    const summary = buildFinancialSummary({
+      accounts,
+      entries: refundEntries,
+      transactions: [...transactions, refundTransaction],
+      currency: "KES",
+    });
+    expect(summary.cashFlow.incomeMinor).toBe(100000n);
+    expect(summary.cashFlow.expenseMinor).toBe(20000n);
+    expect(summary.cashFlow.netCashFlowMinor).toBe(80000n);
+  });
+
+  it("excludes unposted transactions from cash-flow and resilience metrics", () => {
+    const pendingExpense: Transaction = {
+      transactionId: "pending-food", ownerId: "user-1", type: "expense", status: "validated",
+      occurredAt: "2026-09-04T08:00:00Z", description: "Pending groceries",
+      total: { amountMinor: 90000n, currency: "KES" },
+      provenance: { sourceKind: "manual", importedAt: "2026-09-04T08:00:00Z" },
+    };
+    const baseline = buildFinancialSummary({ accounts, entries, transactions, currency: "KES" });
+    const withPending = buildFinancialSummary({
+      accounts,
+      entries,
+      transactions: [...transactions, pendingExpense],
+      currency: "KES",
+    });
+    expect(withPending.cashFlow.expenseMinor).toBe(baseline.cashFlow.expenseMinor);
+    expect(withPending.resilience.emergencyRunwayMonths).toBe(baseline.resilience.emergencyRunwayMonths);
+    expect(withPending.resilience.spendingVolatility).toBe(baseline.resilience.spendingVolatility);
+  });
+
 });

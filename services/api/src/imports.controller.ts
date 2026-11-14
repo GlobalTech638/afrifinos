@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Inject, Post } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Inject, InternalServerErrorException, Post } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { parseTransactionCsv } from "@afrifinos/financial-ingestion";
 import { ingestTransactionBatch } from "@afrifinos/financial-application";
@@ -21,22 +21,32 @@ export class ImportsController {
 
   @Post("csv")
   async importCsv(@OwnerId() ownerId: string, @Body() body: CsvImportBody) {
-    if (!body.csv?.trim()) throw new BadRequestException("csv is required");
-    if (!body.primaryAccountId?.trim() || !body.counterAccountId?.trim()) {
+    if (!body || typeof body.csv !== "string" || !body.csv.trim()) throw new BadRequestException("csv is required");
+    if (typeof body.primaryAccountId !== "string" || typeof body.counterAccountId !== "string" || !body.primaryAccountId.trim() || !body.counterAccountId.trim()) {
       throw new BadRequestException("primaryAccountId and counterAccountId are required");
     }
-    if (body.providerId !== undefined && !body.providerId.trim()) {
+    if (body.providerId !== undefined && (typeof body.providerId !== "string" || !body.providerId.trim())) {
       throw new BadRequestException("providerId cannot be empty");
     }
 
-    const parsed = parseTransactionCsv(body.csv);
+    if (body.csv.length > 10_000_000) throw new BadRequestException("CSV exceeds the 10 MB import limit");
+
+    let parsed: ReturnType<typeof parseTransactionCsv>;
+    try {
+      parsed = parseTransactionCsv(body.csv);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : "Invalid CSV input");
+    }
+    if (!body.providerId?.trim() && parsed.rows.some((row) => row.externalId)) {
+      throw new BadRequestException("providerId is required when CSV rows contain external_id values");
+    }
     const result = ingestTransactionBatch(this.repository, {
       ownerId,
-      primaryAccountId: body.primaryAccountId,
-      counterAccountId: body.counterAccountId,
+      primaryAccountId: body.primaryAccountId.trim(),
+      counterAccountId: body.counterAccountId.trim(),
       inputs: parsed.rows,
       sourceKind: "csv",
-      providerId: body.providerId,
+      ...(body.providerId?.trim() ? { providerId: body.providerId.trim() } : {}),
       transactionIdFor: () => randomUUID(),
     });
 
@@ -58,8 +68,8 @@ export class ImportsController {
         persistenceErrors,
         transactionIds: batch.persisted.map((item) => item.transaction.transactionId),
       };
-    } catch (error) {
-      throw new BadRequestException(error instanceof Error ? error.message : "CSV import failed");
+    } catch {
+      throw new InternalServerErrorException("Unable to import CSV transactions");
     }
   }
 }

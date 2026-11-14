@@ -35,7 +35,7 @@ export function deriveFinancialSignals(snapshot: FinancialIntelligenceSnapshot):
     signals.push({
       id: `spending-driver-${driver.categoryId}`,
       category: "cash_flow",
-      severity: driver.contributionRatio >= 0.5 ? "warning" : "info",
+      severity: (driver.contributionRatio ?? 0) >= 0.5 ? "warning" : "info",
       status: "active",
       title: "Major spending driver",
       statement: `Category ${driver.categoryId} accounts for a significant share of the recent spending change.`,

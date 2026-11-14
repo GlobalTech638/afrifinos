@@ -13,7 +13,7 @@ function fact(
   severity: FinancialFact["severity"],
   evidence: readonly string[],
 ): FinancialFact {
-  return { id, category, statement, severity, evidence };
+  return { id, category, statement, ...(severity ? { severity } : {}), evidence };
 }
 
 export function deriveFinancialFacts(snapshot: FinancialIntelligenceSnapshot): readonly FinancialFact[] {
@@ -29,7 +29,7 @@ export function deriveFinancialFacts(snapshot: FinancialIntelligenceSnapshot): r
     facts.push(fact("debt-high-burden", "debt", "Debt service is consuming a high share of recorded income.", "warning", ["summary.debt.debtBurdenRatio"]));
   }
 
-  if (liquidityRisk.level === "critical" || liquidityRisk.level === "high" || liquidityRisk.level === "watch") {
+  if (forecast.minimumProjectedBalanceMinor >= 0n && (liquidityRisk.level === "critical" || liquidityRisk.level === "high" || liquidityRisk.level === "watch")) {
     facts.push(fact(
       "liquidity-risk",
       "liquidity",

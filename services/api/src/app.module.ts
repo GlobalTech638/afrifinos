@@ -8,6 +8,7 @@ import { TransactionsController } from "./transactions.controller.js";
 import { FinancialController } from "./financial.controller.js";
 import { FinancialSignalsController } from "./financial-signals.controller.js";
 import { ImportsController } from "./imports.controller.js";
+import { FxController } from "./fx.controller.js";
 import { ApiFinancialService } from "./api-financial.service.js";
 import { JwtAuthGuard } from "./auth-context.js";
 
@@ -34,6 +35,7 @@ const repositoryProvider: Provider = {
     FinancialController,
     FinancialSignalsController,
     ImportsController,
+    FxController,
   ],
   providers: [
     postgresClientProvider,
