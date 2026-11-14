@@ -35,10 +35,10 @@ export default function AddTransactionScreen() {
   }, [session]);
 
   const selected = accounts.find((account) => account.accountId === primaryId);
-  const compatibleCounters = accounts.filter((account) => account.accountId !== primaryId && account.currency === selected?.currency);
+  const compatibleCounters = accounts.filter((account) => account.accountId !== primaryId && account.currency.toUpperCase() === selected?.currency.toUpperCase());
 
   async function submit() {
-    if (!session || !primaryId || !counterId || primaryId === counterId || accounts.find((account) => account.accountId === counterId)?.currency !== selected?.currency) {
+    if (!session || !primaryId || !counterId || primaryId === counterId || accounts.find((account) => account.accountId === counterId)?.currency.toUpperCase() !== selected?.currency.toUpperCase()) {
       setError("Choose two different accounts.");
       return;
     }
@@ -47,7 +47,7 @@ export default function AddTransactionScreen() {
       return;
     }
     const [whole, fraction = ""] = amount.trim().split(".");
-    const fractionDigits = new Set(["UGX", "RWF", "JPY", "XOF", "XAF", "BIF", "GNF", "KMF"]).has(selected?.currency ?? "KES") ? 0 : 2;
+    const fractionDigits = new Set(["UGX", "RWF", "JPY", "XOF", "XAF", "BIF", "GNF", "KMF"]).has(selected?.currency.toUpperCase() ?? "KES") ? 0 : 2;
     if (fractionDigits === 0 && fraction.length > 0 && Number(fraction) !== 0) {
       setError("This currency does not use fractional minor units.");
       return;
@@ -87,8 +87,8 @@ export default function AddTransactionScreen() {
       <View style={{ gap: 7 }}>{accounts.map((account) => <Pressable key={account.accountId} onPress={() => {
         setPrimaryId(account.accountId);
         const currentCounter = accounts.find((item) => item.accountId === counterId);
-        if (!currentCounter || currentCounter.accountId === account.accountId || currentCounter.currency !== account.currency) {
-          setCounterId(accounts.find((item) => item.accountId !== account.accountId && item.currency === account.currency)?.accountId ?? "");
+        if (!currentCounter || currentCounter.accountId === account.accountId || currentCounter.currency.toUpperCase() !== account.currency.toUpperCase()) {
+          setCounterId(accounts.find((item) => item.accountId !== account.accountId && item.currency.toUpperCase() === account.currency.toUpperCase())?.accountId ?? "");
         }
       }} style={{ borderRadius: 11, padding: 12, borderWidth: 1, borderColor: primaryId === account.accountId ? colors.blue : colors.line, backgroundColor: primaryId === account.accountId ? colors.lavender : colors.white }}><Text style={{ color: colors.ink, fontWeight: "700" }}>{account.name} · {account.currency}</Text></Pressable>)}</View>
       <Label>Counter account</Label>
