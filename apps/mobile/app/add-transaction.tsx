@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { api, type Account } from "../lib/api";
+import { api, currencyMinorUnitExponent, parseMajorToMinor, type Account } from "../lib/api";
 import { Button, Card, ErrorText, Field, Heading, Label, Screen } from "../components/ui";
 import { colors } from "../lib/theme";
 import { useAuth } from "../providers/auth-provider";
@@ -42,17 +42,12 @@ export default function AddTransactionScreen() {
       setError("Choose two different accounts.");
       return;
     }
-    if (!/^\d+(?:\.\d{1,2})?$/.test(amount.trim()) || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
-      setError("Enter a valid positive amount with up to two decimal places.");
+    const currencyCode = selected?.currency.toUpperCase() ?? "KES";
+    const amountMinor = parseMajorToMinor(amount, currencyCode);
+    if (!amountMinor) {
+      setError(`Enter a positive amount with up to ${currencyMinorUnitExponent(currencyCode)} decimal places.`);
       return;
     }
-    const [whole, fraction = ""] = amount.trim().split(".");
-    const fractionDigits = new Set(["UGX", "RWF", "JPY", "XOF", "XAF", "BIF", "GNF", "KMF"]).has(selected?.currency.toUpperCase() ?? "KES") ? 0 : 2;
-    if (fractionDigits === 0 && fraction.length > 0 && Number(fraction) !== 0) {
-      setError("This currency does not use fractional minor units.");
-      return;
-    }
-    const amountMinor = (BigInt(whole || "0") * (10n ** BigInt(fractionDigits)) + BigInt(fractionDigits ? (fraction + "0".repeat(fractionDigits)).slice(0, fractionDigits) : "0")).toString();
     setBusy(true); setError("");
     try {
       await api.createTransaction(session, {
