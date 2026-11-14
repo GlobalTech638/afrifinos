@@ -825,13 +825,16 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
       await poster.query("BEGIN");
       const pidResult = await poster.query("SELECT pg_backend_pid() AS pid");
       const pid = Number(pidResult.rows[0]?.pid);
+      // Attach rejection handling immediately: PostgreSQL may reject the
+      // blocked statement as soon as the updater commits, before we await it.
       const posting = poster.query(
         "INSERT INTO ledger_entries (id, transaction_id, account_id, currency, amount_minor, direction, posted_at) VALUES ($1, $2, $3, 'KES', 100, 'debit', now()), ($4, $2, $5, 'KES', 100, 'credit', now())",
         [randomUUID(), ids.transactionId, ids.debitAccountId, randomUUID(), ids.creditAccountId],
-      );
+      ).then(() => ({ ok: true as const }), (error: { code?: string }) => ({ ok: false as const, error }));
       await waitForLockWait(pid);
       await updater.query("COMMIT");
-      await expect(posting).rejects.toMatchObject({ code: "23514" });
+      const postingResult = await posting;
+      expect(postingResult).toMatchObject({ ok: false, error: { code: "23514" } });
       await poster.query("ROLLBACK").catch(() => undefined);
     } finally {
       await updater.query("ROLLBACK").catch(() => undefined);
@@ -869,10 +872,12 @@ const integration = describe.skipIf(!databaseUrl)("PostgreSQL ledger integrity m
       await updater.query("BEGIN");
       const pidResult = await updater.query("SELECT pg_backend_pid() AS pid");
       const pid = Number(pidResult.rows[0]?.pid);
-      const update = updater.query("UPDATE accounts SET currency = 'USD' WHERE id = $1", [ids.debitAccountId]);
+      const update = updater.query("UPDATE accounts SET currency = 'USD' WHERE id = $1", [ids.debitAccountId])
+        .then(() => ({ ok: true as const }), (error: { code?: string }) => ({ ok: false as const, error }));
       await waitForLockWait(pid);
       await poster.query("COMMIT");
-      await expect(update).rejects.toMatchObject({ code: "23514" });
+      const updateResult = await update;
+      expect(updateResult).toMatchObject({ ok: false, error: { code: "23514" } });
       await updater.query("ROLLBACK").catch(() => undefined);
     } finally {
       await poster.query("ROLLBACK").catch(() => undefined);
