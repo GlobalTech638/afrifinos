@@ -100,7 +100,7 @@ export function currencyMinorUnitExponent(currency: string): number {
 /** Convert a user-entered major-unit amount to an exact integer minor-unit string. */
 export function parseMajorToMinor(value: string, currency: string): string | null {
   const normalized = value.trim();
-  if (!/^\\d+(?:\\.\\d+)?$/.test(normalized)) return null;
+  if (!/^\d+(?:\.\d+)?$/.test(normalized)) return null;
   const digits = currencyMinorUnitExponent(currency);
   const [whole = "0", fraction = ""] = normalized.split(".");
   if (fraction.length > digits) return null;
