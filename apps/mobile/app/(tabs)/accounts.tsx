@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { useFocusEffect } from "expo-router";
+import { Link, useFocusEffect } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 import { api, type Account } from "../../lib/api";
 import { Button, Card, Empty, ErrorText, Field, Heading, Label, Screen } from "../../components/ui";
@@ -61,6 +61,12 @@ export default function AccountsScreen() {
         )}
         <Text style={{ color: colors.muted, fontSize: 10, lineHeight: 15 }}>Accounts are grouped by their native currency. AfriFinos keeps currencies separate unless a verified exchange rate is used for conversion.</Text>
       </View>}
+    <Link href="/fx-history" asChild>
+      <Pressable accessibilityRole="button" style={{ backgroundColor: colors.lavender, borderRadius: 16, borderWidth: 1, borderColor: colors.lavenderStrong, padding: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <View style={{ gap: 4 }}><Text style={{ color: colors.blue, fontSize: 13, fontWeight: "900" }}>FX conversion history</Text><Text style={{ color: colors.muted, fontSize: 10 }}>Review completed currency exchanges</Text></View>
+        <Text style={{ color: colors.blue, fontSize: 22, fontWeight: "900" }}>→</Text>
+      </Pressable>
+    </Link>
     <Card>
       <Heading title="Add an account" subtitle="Create a place where you hold or owe money." />
       <Label>Account name</Label><Field value={name} onChangeText={setName} placeholder="e.g. M-Pesa wallet" />
